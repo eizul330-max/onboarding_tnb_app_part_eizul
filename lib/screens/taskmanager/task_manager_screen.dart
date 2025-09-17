@@ -73,14 +73,12 @@ class DocumentManagerScreen extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 16),
-            // Removed initialFile for Lampiran A to make it empty initially
             const DocumentCard(
               title: 'Lampiran A',
-              subtitle: 'Upload the required files', // Changed subtitle to reflect empty state
-              subtitleColor: Colors.grey, // Changed color to reflect empty state
+              subtitle: 'Upload the required files',
+              subtitleColor: Colors.grey,
             ),
             const SizedBox(height: 12),
-            // 'Sijil Tanggung Diri' is now handled correctly for "In Progress"
             const DocumentCard(
               title: 'Sijil Tanggung Diri',
               subtitle: 'Upload in Progress',
@@ -102,20 +100,6 @@ class DocumentManagerScreen extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                         color: Colors.black87,
                       ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    // Handle View All for Private Details
-                  },
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    minimumSize: const Size(0, 0),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(
-                    'View',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
                 ),
               ],
             ),
@@ -143,12 +127,12 @@ class DocumentManagerScreen extends StatelessWidget {
     );
   }
 }
-// test
+
 class DocumentCard extends StatefulWidget {
   final String title;
   final String subtitle;
   final Color? subtitleColor;
-  final String? initialFile; // Keep this for cases where a file might pre-exist
+  final String? initialFile;
 
   const DocumentCard({
     super.key,
@@ -159,7 +143,7 @@ class DocumentCard extends StatefulWidget {
   });
 
   @override
-  _DocumentCardState createState() => _DocumentCardState();
+  State<DocumentCard> createState() => _DocumentCardState();
 }
 
 class _DocumentCardState extends State<DocumentCard> {
@@ -169,10 +153,7 @@ class _DocumentCardState extends State<DocumentCard> {
   @override
   void initState() {
     super.initState();
-    // Initialize _selectedFileName ONLY if initialFile is provided
-    if (widget.initialFile != null) {
-      _selectedFileName = widget.initialFile;
-    }
+    _selectedFileName = widget.initialFile;
   }
 
   Future<void> _pickFile() async {
@@ -204,6 +185,13 @@ class _DocumentCardState extends State<DocumentCard> {
     }
   }
 
+  void _removeFile() {
+    setState(() {
+      _selectedFileName = null;
+      _showSnackbar('File removed successfully!');
+    });
+  }
+
   void _showSnackbar(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -214,29 +202,27 @@ class _DocumentCardState extends State<DocumentCard> {
 
   @override
   Widget build(BuildContext context) {
-    // Determine if a file is currently selected/uploaded
     final bool hasFile = _selectedFileName != null;
 
-    // Define icon and color based on status priority: Uploading > Has File > Empty
     IconData cardIcon;
     Color cardIconColor;
     String currentSubtitle;
     Color currentSubtitleColor;
 
     if (_isUploading) {
-      cardIcon = Icons.upload_file; // Icon for uploading
+      cardIcon = Icons.upload_file;
       cardIconColor = Colors.blue;
       currentSubtitle = 'Uploading...';
       currentSubtitleColor = Colors.blue[600]!;
     } else if (hasFile) {
-      cardIcon = Icons.check_circle; // Icon for file uploaded
+      cardIcon = Icons.check_circle;
       cardIconColor = Colors.green;
       currentSubtitle = _selectedFileName!;
       currentSubtitleColor = Colors.green;
     } else {
-      cardIcon = Icons.add_circle; // Icon for empty/no file
+      cardIcon = Icons.add_circle;
       cardIconColor = Colors.grey;
-      currentSubtitle = widget.subtitle; // Use the default subtitle (e.g., "Upload the required files")
+      currentSubtitle = widget.subtitle;
       currentSubtitleColor = widget.subtitleColor ?? Colors.grey[600]!;
     }
 
@@ -297,27 +283,85 @@ class _DocumentCardState extends State<DocumentCard> {
                 ],
               ),
             ),
-            SizedBox(
-              height: 30,
-              child: OutlinedButton(
-                onPressed: _isUploading ? null : _pickFile,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.grey[600],
-                  side: BorderSide(color: Colors.grey[300]!),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+            // Actions (Upload/View/Edit/Remove)
+            if (_isUploading)
+              Text('Uploading...', style: TextStyle(color: Colors.blue[600]))
+            else if (hasFile)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: 30,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        // Handle 'View' action (e.g., open file)
+                        _showSnackbar('Viewing $_selectedFileName');
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.grey[600],
+                        side: BorderSide(color: Colors.grey[300]!),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: const Text('View', style: TextStyle(fontSize: 13)),
+                    ),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  visualDensity: VisualDensity.compact,
-                ),
-                child: Text(
-                  _isUploading
-                      ? 'Uploading'
-                      : (_selectedFileName != null ? 'View' : 'Upload'),
-                  style: const TextStyle(fontSize: 13),
+                  const SizedBox(width: 8),
+                  PopupMenuButton<String>(
+                    onSelected: (String result) {
+                      if (result == 'edit') {
+                        _pickFile(); // Re-use the pick file logic for 'Edit'
+                      } else if (result == 'remove') {
+                        _removeFile();
+                      }
+                    },
+                    itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                      const PopupMenuItem<String>(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit, size: 20),
+                            SizedBox(width: 8),
+                            Text('Edit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem<String>(
+                        value: 'remove',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, size: 20, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('Remove'),
+                          ],
+                        ),
+                      ),
+                    ],
+                    icon: Icon(Icons.more_vert, color: Colors.grey[600]),
+                    padding: EdgeInsets.zero,
+                  )
+                ],
+              )
+            else
+              SizedBox(
+                height: 30,
+                child: OutlinedButton(
+                  onPressed: _pickFile,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey[600],
+                    side: BorderSide(color: Colors.grey[300]!),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text('Upload', style: TextStyle(fontSize: 13)),
                 ),
               ),
-            ),
           ],
         ),
       ),
