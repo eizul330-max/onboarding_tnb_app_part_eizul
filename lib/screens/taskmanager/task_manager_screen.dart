@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:open_filex/open_filex.dart'; // Import the package
+import 'dart:io' as io; // Import dart:io, though not directly used for opening files in Flutter
 
 void main() {
   runApp(const TaskManager());
@@ -91,17 +93,12 @@ class DocumentManagerScreen extends StatelessWidget {
             ),
             const SizedBox(height: 32),
             // Private Details and Certs Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Private Details and Certs',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                ),
-              ],
+            Text(
+              'Private Details and Certs',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
             ),
             const SizedBox(height: 16),
             DocumentCard(
@@ -150,11 +147,6 @@ class _DocumentCardState extends State<DocumentCard> {
   String? _selectedFileName;
   bool _isUploading = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _selectedFileName = widget.initialFile;
-  }
 
   Future<void> _pickFile() async {
     setState(() {
@@ -182,6 +174,19 @@ class _DocumentCardState extends State<DocumentCard> {
           _isUploading = false; // Ensure uploading state is reset
         });
       }
+    }
+  }
+
+  Future<void> _openFile() async {
+    if (_selectedFileName != null) {
+      final result = await OpenFilex.open(_selectedFileName!);
+      if (result.type != ResultType.done) {
+        _showSnackbar('Error opening file: ${result.message}');
+      } else {
+        _showSnackbar('File "$_selectedFileName" opened successfully.');
+      }
+    } else {
+      _showSnackbar('No file selected to open.');
     }
   }
 
@@ -293,10 +298,7 @@ class _DocumentCardState extends State<DocumentCard> {
                   SizedBox(
                     height: 30,
                     child: OutlinedButton(
-                      onPressed: () {
-                        // Handle 'View' action (e.g., open file)
-                        _showSnackbar('Viewing $_selectedFileName');
-                      },
+                      onPressed: _openFile, // Call the new _openFile function
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.grey[600],
                         side: BorderSide(color: Colors.grey[300]!),
