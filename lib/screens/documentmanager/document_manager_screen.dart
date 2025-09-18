@@ -52,24 +52,7 @@ class DocumentManagerScreen extends StatefulWidget {
 }
 
 class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
-  List<FileItem> _rootFolders = [
-    Folder(
-      name: 'Required Documents',
-      children: [
-        Document(name: 'Lampiran A', path: 'path/to/lampiran_a.pdf', status: DocumentStatus.uploaded),
-        Document(name: 'Sijil Tanggung Diri', path: '', status: DocumentStatus.pending),
-        Document(name: 'Penyata Bank', path: '', status: DocumentStatus.pending),
-      ],
-    ),
-    Folder(
-      name: 'Private Details and Certs',
-      children: [
-        Document(name: 'Identity Card (IC)', path: '', status: DocumentStatus.pending),
-        Document(name: 'Driving License', path: '', status: DocumentStatus.pending),
-        Document(name: 'Certificates', path: '', status: DocumentStatus.pending),
-      ],
-    ),
-  ];
+  List<FileItem> _rootFolders = [];
   List<FileItem> _currentDirectory = [];
   String _currentPath = '';
 
@@ -131,6 +114,21 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
           }
         });
       }
+    }
+  }
+
+  void _addFileToCurrentFolder() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    if (result != null) {
+      final platformFile = result.files.first;
+      setState(() {
+        _currentDirectory.add(Document(
+          name: platformFile.name!,
+          path: platformFile.path!,
+          status: DocumentStatus.uploaded,
+        ));
+      });
+      _showSnackbar('File "${platformFile.name}" added successfully!');
     }
   }
 
@@ -274,10 +272,7 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.black,
         leading: isRoot
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).pop(),
-              )
+            ? null
             : IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: _goBack,
@@ -308,7 +303,7 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
             return FolderCard(
               folder: item,
               onTap: () => _navigateToFolder(item),
-              onLongPress: () => _showFolderContextMenu(item),
+              onMenuTap: () => _showFolderContextMenu(item),
             );
           } else if (item is Document) {
             return DocumentCard(
@@ -320,19 +315,17 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
                   _pickAndUploadFile(item);
                 }
               },
-              onLongPress: () => _showFileContextMenu(item),
+              onMenuTap: () => _showFileContextMenu(item),
             );
           }
           return Container();
         },
       ),
-      floatingActionButton: isRoot
-          ? FloatingActionButton(
-              onPressed: _createFolder,
-              child: const Icon(Icons.create_new_folder),
-              tooltip: 'Create New Folder',
-            )
-          : null,
+      floatingActionButton: FloatingActionButton(
+        onPressed: isRoot ? _createFolder : _addFileToCurrentFolder,
+        child: Icon(isRoot ? Icons.create_new_folder : Icons.add),
+        tooltip: isRoot ? 'Create New Folder' : 'Add New File',
+      ),
     );
   }
 }
@@ -340,31 +333,31 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
 class FolderCard extends StatelessWidget {
   final Folder folder;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback onMenuTap;
 
   const FolderCard({
     super.key,
     required this.folder,
     required this.onTap,
-    required this.onLongPress,
+    required this.onMenuTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onLongPress: onLongPress,
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 16),
-        child: ListTile(
-          leading: const Icon(Icons.folder_open, color: Colors.blue, size: 40),
-          title: Text(
-            folder.name,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          subtitle: Text('${folder.children.length} items'),
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: onTap,
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: ListTile(
+        leading: const Icon(Icons.folder_open, color: Colors.blue, size: 40),
+        title: Text(
+          folder.name,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+        subtitle: Text('${folder.children.length} items'),
+        trailing: IconButton(
+          icon: const Icon(Icons.more_vert),
+          onPressed: onMenuTap,
+        ),
+        onTap: onTap,
       ),
     );
   }
@@ -373,13 +366,13 @@ class FolderCard extends StatelessWidget {
 class DocumentCard extends StatelessWidget {
   final Document document;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback onMenuTap;
 
   const DocumentCard({
     super.key,
     required this.document,
     required this.onTap,
-    required this.onLongPress,
+    required this.onMenuTap,
   });
 
   @override
@@ -410,84 +403,78 @@ class DocumentCard extends StatelessWidget {
         break;
     }
 
-    return GestureDetector(
-      onLongPress: onLongPress,
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        elevation: 1,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: iconColor.withOpacity(0.1),
-                ),
-                child: Center(
-                  child: document.status == DocumentStatus.uploading
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(iconColor),
-                          ),
-                        )
-                      : Icon(icon, color: iconColor, size: 24),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      document.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
-                      ),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16.0),
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: iconColor.withOpacity(0.1),
+          ),
+          child: Center(
+            child: document.status == DocumentStatus.uploading
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(iconColor),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                height: 30,
-                child: OutlinedButton(
-                  onPressed: document.status == DocumentStatus.uploading ? null : onTap,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey[600],
-                    side: BorderSide(color: Colors.grey[300]!),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  child: Text(
-                    buttonText,
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ),
-              ),
-            ],
+                  )
+                : Icon(icon, color: iconColor, size: 24),
           ),
         ),
+        title: Text(
+          document.name,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+            fontSize: 13,
+            color: Colors.grey[600],
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: 30,
+              child: OutlinedButton(
+                onPressed: document.status == DocumentStatus.uploading ? null : onTap,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey[600],
+                  side: BorderSide(color: Colors.grey[300]!),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: Text(
+                  buttonText,
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.more_vert),
+              onPressed: onMenuTap,
+            ),
+          ],
+        ),
+        onTap: onTap,
       ),
     );
   }
