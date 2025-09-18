@@ -156,7 +156,7 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
     );
   }
 
-  void _showContextMenu(Document doc) {
+  void _showFileContextMenu(Document doc) {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -183,6 +183,43 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
         ),
       ),
     );
+  }
+
+  void _showFolderContextMenu(Folder folder) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.drive_file_move_outlined),
+              title: const Text('Move'),
+              onTap: () {
+                Navigator.pop(context);
+                // Implementation for moving folder
+                _showSnackbar('Move functionality coming soon!');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete),
+              title: const Text('Delete'),
+              onTap: () {
+                Navigator.pop(context);
+                _deleteFolder(folder);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  void _deleteFolder(Folder folder) {
+    setState(() {
+      _rootFolders.removeWhere((item) => item is Folder && item.name == folder.name);
+    });
+    _showSnackbar('Folder "${folder.name}" deleted.');
   }
 
   void _createFolder() {
@@ -271,6 +308,7 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
             return FolderCard(
               folder: item,
               onTap: () => _navigateToFolder(item),
+              onLongPress: () => _showFolderContextMenu(item),
             );
           } else if (item is Document) {
             return DocumentCard(
@@ -282,7 +320,7 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
                   _pickAndUploadFile(item);
                 }
               },
-              onLongPress: () => _showContextMenu(item),
+              onLongPress: () => _showFileContextMenu(item),
             );
           }
           return Container();
@@ -302,26 +340,31 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
 class FolderCard extends StatelessWidget {
   final Folder folder;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   const FolderCard({
     super.key,
     required this.folder,
     required this.onTap,
+    required this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: ListTile(
-        leading: const Icon(Icons.folder_open, color: Colors.blue, size: 40),
-        title: Text(
-          folder.name,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+    return GestureDetector(
+      onLongPress: onLongPress,
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 16),
+        child: ListTile(
+          leading: const Icon(Icons.folder_open, color: Colors.blue, size: 40),
+          title: Text(
+            folder.name,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          subtitle: Text('${folder.children.length} items'),
+          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          onTap: onTap,
         ),
-        subtitle: Text('${folder.children.length} items'),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-        onTap: onTap,
       ),
     );
   }
