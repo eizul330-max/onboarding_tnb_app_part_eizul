@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:onboarding_tnb_app_part_eizul/screens/documentmanager/document_manager_screen.dart';
 import 'package:onboarding_tnb_app_part_eizul/screens/taskmanager/task_manager_screen.dart';
 
 void main() {
@@ -33,14 +34,29 @@ class MainScreen extends StatelessWidget {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: Center(
-        child: ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => DocumentManagerScreen()),
-            );
-          },
-          child: const Text('Go to Task Manager'),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const TaskManagerScreen()),
+                );
+              },
+              child: const Text('Go to Task Manager'),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const DocumentManagerScreen()),
+                );
+              },
+              child: const Text('Go to Document Manager'),
+            ),
+          ],
         ),
       ),
     );

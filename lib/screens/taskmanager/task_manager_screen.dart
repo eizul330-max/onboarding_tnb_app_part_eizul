@@ -21,13 +21,13 @@ class TaskManager extends StatelessWidget {
         useMaterial3: true,
       ),
       debugShowCheckedModeBanner: false,
-      home: const DocumentManagerScreen(),
+      home: const TaskManagerScreen(),
     );
   }
 }
 
-class DocumentManagerScreen extends StatelessWidget {
-  const DocumentManagerScreen({super.key});
+class TaskManagerScreen extends StatelessWidget {
+  const TaskManagerScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

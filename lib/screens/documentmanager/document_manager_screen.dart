@@ -2,27 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_filex/open_filex.dart';
 
-void main() {
-  runApp(const TaskManager());
-}
-
-// Enums to manage file status more clearly
+// Enums to manage file status
 enum DocumentStatus { uploaded, pending, uploading }
 
-// A data model for a single file
-class DocumentFile {
+// Data model for a single file or a folder
+abstract class FileItem {
   final String name;
+  FileItem({required this.name});
+}
+
+// Represents a single file
+class Document extends FileItem {
   final String path;
   final DocumentStatus status;
 
-  const DocumentFile({
-    required this.name,
+  Document({
+    required super.name,
     required this.path,
     this.status = DocumentStatus.pending,
   });
 
-  DocumentFile copyWith({String? name, String? path, DocumentStatus? status}) {
-    return DocumentFile(
+  Document copyWith({String? name, String? path, DocumentStatus? status}) {
+    return Document(
       name: name ?? this.name,
       path: path ?? this.path,
       status: status ?? this.status,
@@ -30,37 +31,15 @@ class DocumentFile {
   }
 }
 
-// A data model for a folder
-class DocumentFolder {
-  final String name;
-  final List<DocumentFile> files;
+// Represents a folder
+class Folder extends FileItem {
+  final List<FileItem> children;
+  Folder({required super.name, required this.children});
 
-  const DocumentFolder({
-    required this.name,
-    required this.files,
-  });
-
-  DocumentFolder copyWith({String? name, List<DocumentFile>? files}) {
-    return DocumentFolder(
+  Folder copyWith({String? name, List<FileItem>? children}) {
+    return Folder(
       name: name ?? this.name,
-      files: files ?? this.files,
-    );
-  }
-}
-
-class TaskManager extends StatelessWidget {
-  const TaskManager({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Document Manager UI',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
-        useMaterial3: true,
-      ),
-      debugShowCheckedModeBanner: false,
-      home: const DocumentManagerScreen(),
+      children: children ?? this.children,
     );
   }
 }
@@ -73,62 +52,123 @@ class DocumentManagerScreen extends StatefulWidget {
 }
 
 class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
-  final List<DocumentFolder> _documentFolders = [
-    const DocumentFolder(
+  List<FileItem> _rootFolders = [
+    Folder(
       name: 'Required Documents',
-      files: [
-        DocumentFile(
-          name: 'Lampiran A',
-          path: 'assets/documents/lampiran_a.pdf',
-          status: DocumentStatus.uploaded,
-        ),
-        DocumentFile(
-          name: 'Sijil Tanggung Diri',
-          path: '',
-          status: DocumentStatus.pending,
-        ),
-        DocumentFile(
-          name: 'Penyata Bank',
-          path: '',
-          status: DocumentStatus.pending,
-        ),
+      children: [
+        Document(name: 'Lampiran A', path: 'path/to/lampiran_a.pdf', status: DocumentStatus.uploaded),
+        Document(name: 'Sijil Tanggung Diri', path: '', status: DocumentStatus.pending),
+        Document(name: 'Penyata Bank', path: '', status: DocumentStatus.pending),
       ],
     ),
-    const DocumentFolder(
+    Folder(
       name: 'Private Details and Certs',
-      files: [
-        DocumentFile(
-          name: 'Identity Card (IC)',
-          path: '',
-          status: DocumentStatus.pending,
-        ),
-        DocumentFile(
-          name: 'Driving License',
-          path: '',
-          status: DocumentStatus.pending,
-        ),
-        DocumentFile(
-          name: 'Certificates',
-          path: '',
-          status: DocumentStatus.pending,
-        ),
+      children: [
+        Document(name: 'Identity Card (IC)', path: '', status: DocumentStatus.pending),
+        Document(name: 'Driving License', path: '', status: DocumentStatus.pending),
+        Document(name: 'Certificates', path: '', status: DocumentStatus.pending),
       ],
     ),
   ];
+  List<FileItem> _currentDirectory = [];
+  String _currentPath = '';
 
-  void _onFileAction(DocumentFile file, DocumentFolder folder) {
+  @override
+  void initState() {
+    super.initState();
+    _currentDirectory = _rootFolders;
+    _currentPath = 'Home';
+  }
+
+  void _navigateToFolder(Folder folder) {
+    setState(() {
+      _currentDirectory = folder.children;
+      _currentPath = folder.name;
+    });
+  }
+
+  void _goBack() {
+    setState(() {
+      _currentDirectory = _rootFolders;
+      _currentPath = 'Home';
+    });
+  }
+
+  Future<void> _pickAndUploadFile(Document doc) async {
+    setState(() {
+      final docIndex = _currentDirectory.indexOf(doc);
+      if (docIndex != -1) {
+        _currentDirectory[docIndex] = doc.copyWith(status: DocumentStatus.uploading);
+      }
+    });
+
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles();
+      if (result != null) {
+        final platformFile = result.files.first;
+        final docIndex = _currentDirectory.indexOf(doc);
+        if (docIndex != -1) {
+          setState(() {
+            _currentDirectory[docIndex] = Document(
+              name: platformFile.name!,
+              path: platformFile.path!,
+              status: DocumentStatus.uploaded,
+            );
+          });
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          final docIndex = _currentDirectory.indexOf(doc);
+          if (docIndex != -1) {
+            final item = _currentDirectory[docIndex];
+            if (item is Document) {
+              _currentDirectory[docIndex] = item.copyWith(
+                status: item.path.isNotEmpty ? DocumentStatus.uploaded : DocumentStatus.pending,
+              );
+            }
+          }
+        });
+      }
+    }
+  }
+
+  void _removeFile(Document doc) {
+    setState(() {
+      final docIndex = _currentDirectory.indexOf(doc);
+      if (docIndex != -1) {
+        _currentDirectory[docIndex] = doc.copyWith(path: '', status: DocumentStatus.pending);
+      }
+    });
+    _showSnackbar('File removed successfully!');
+  }
+
+  void _openFile(Document doc) async {
+    if (doc.path.isNotEmpty) {
+      await OpenFilex.open(doc.path);
+    }
+  }
+
+  void _showSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  void _showContextMenu(Document doc) {
     showModalBottomSheet(
       context: context,
-      builder: (BuildContext context) {
-        return Column(
+      builder: (context) => SafeArea(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
+          children: [
             ListTile(
               leading: const Icon(Icons.edit),
               title: const Text('Edit'),
               onTap: () {
                 Navigator.pop(context);
-                _pickAndReplaceFile(file, folder);
+                _pickAndUploadFile(doc);
               },
             ),
             ListTile(
@@ -136,8 +176,41 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
               title: const Text('Remove'),
               onTap: () {
                 Navigator.pop(context);
-                _removeFile(file, folder);
+                _removeFile(doc);
               },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _createFolder() {
+    TextEditingController controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Create New Folder'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(hintText: 'Folder Name'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (controller.text.isNotEmpty) {
+                  setState(() {
+                    _rootFolders.add(Folder(name: controller.text, children: []));
+                  });
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Create'),
             ),
           ],
         );
@@ -145,195 +218,165 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
     );
   }
 
-  void _removeFile(DocumentFile file, DocumentFolder folder) {
+  void _sortFolders() {
     setState(() {
-      final folderIndex = _documentFolders.indexOf(folder);
-      final fileIndex = folder.files.indexOf(file);
-
-      final updatedFile = file.copyWith(
-        name: file.name,
-        path: '',
-        status: DocumentStatus.pending,
-      );
-
-      final updatedFiles = List<DocumentFile>.from(folder.files);
-      updatedFiles[fileIndex] = updatedFile;
-
-      final updatedFolder = folder.copyWith(files: updatedFiles);
-      _documentFolders[folderIndex] = updatedFolder;
+      _rootFolders.sort((a, b) => a.name.compareTo(b.name));
     });
-  }
-
-  Future<void> _pickAndReplaceFile(DocumentFile file, DocumentFolder folder) async {
-    setState(() {
-      final folderIndex = _documentFolders.indexOf(folder);
-      final fileIndex = folder.files.indexOf(file);
-
-      final updatedFile = file.copyWith(status: DocumentStatus.uploading);
-      final updatedFiles = List<DocumentFile>.from(folder.files);
-      updatedFiles[fileIndex] = updatedFile;
-      _documentFolders[folderIndex] = folder.copyWith(files: updatedFiles);
-    });
-
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles();
-      if (result != null) {
-        final platformFile = result.files.first;
-        final folderIndex = _documentFolders.indexOf(folder);
-        final fileIndex = folder.files.indexOf(file);
-
-        final updatedFile = DocumentFile(
-          name: platformFile.name,
-          path: platformFile.path!,
-          status: DocumentStatus.uploaded,
-        );
-
-        final updatedFiles = List<DocumentFile>.from(folder.files);
-        updatedFiles[fileIndex] = updatedFile;
-        _documentFolders[folderIndex] = folder.copyWith(files: updatedFiles);
-      }
-    } finally {
-      setState(() {
-        final folderIndex = _documentFolders.indexOf(folder);
-        final fileIndex = folder.files.indexOf(file);
-        final updatedFile = folder.files[fileIndex].copyWith(
-          status: folder.files[fileIndex].path.isNotEmpty
-              ? DocumentStatus.uploaded
-              : DocumentStatus.pending,
-        );
-        final updatedFiles = List<DocumentFile>.from(folder.files);
-        updatedFiles[fileIndex] = updatedFile;
-        _documentFolders[folderIndex] = folder.copyWith(files: updatedFiles);
-      });
-    }
+    _showSnackbar('Folders sorted alphabetically.');
   }
 
   @override
   Widget build(BuildContext context) {
+    final bool isRoot = _currentPath == 'Home';
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text(
-          'Task Manager',
-          style: TextStyle(color: Colors.black),
-        ),
+        title: Text(_currentPath),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.black,
-        automaticallyImplyLeading: false,
-        leading: Center(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: const Color.fromRGBO(224, 124, 124, 1),
-                borderRadius: BorderRadius.circular(6),
+        leading: isRoot
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).pop(),
+              )
+            : IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _goBack,
               ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.arrow_back_ios_new,
-                color: Colors.white,
-                size: 16,
-              ),
-            ),
-          ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: _documentFolders.map((folder) {
-            return Card(
-              margin: const EdgeInsets.only(bottom: 16),
-              child: ExpansionTile(
-                title: Text(
-                  folder.name,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
+        actions: [
+          if (isRoot)
+            PopupMenuButton<String>(
+              onSelected: (String result) {
+                if (result == 'sort') {
+                  _sortFolders();
+                }
+              },
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                const PopupMenuItem<String>(
+                  value: 'sort',
+                  child: Text('Sort by Name (A-Z)'),
                 ),
-                children: folder.files.map((file) {
-                  return FileCard(
-                    file: file,
-                    onTap: () {
-                      if (file.status == DocumentStatus.uploaded) {
-                        OpenFilex.open(file.path);
-                      } else {
-                        _pickAndReplaceFile(file, folder);
-                      }
-                    },
-                    onLongPress: () {
-                      if (file.status == DocumentStatus.uploaded) {
-                        _onFileAction(file, folder);
-                      }
-                    },
-                  );
-                }).toList(),
-              ),
+              ],
+            ),
+        ],
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16.0),
+        itemCount: _currentDirectory.length,
+        itemBuilder: (context, index) {
+          final item = _currentDirectory[index];
+          if (item is Folder) {
+            return FolderCard(
+              folder: item,
+              onTap: () => _navigateToFolder(item),
             );
-          }).toList(),
+          } else if (item is Document) {
+            return DocumentCard(
+              document: item,
+              onTap: () {
+                if (item.status == DocumentStatus.uploaded) {
+                  _openFile(item);
+                } else {
+                  _pickAndUploadFile(item);
+                }
+              },
+              onLongPress: () => _showContextMenu(item),
+            );
+          }
+          return Container();
+        },
+      ),
+      floatingActionButton: isRoot
+          ? FloatingActionButton(
+              onPressed: _createFolder,
+              child: const Icon(Icons.create_new_folder),
+              tooltip: 'Create New Folder',
+            )
+          : null,
+    );
+  }
+}
+
+class FolderCard extends StatelessWidget {
+  final Folder folder;
+  final VoidCallback onTap;
+
+  const FolderCard({
+    super.key,
+    required this.folder,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: ListTile(
+        leading: const Icon(Icons.folder_open, color: Colors.blue, size: 40),
+        title: Text(
+          folder.name,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+        subtitle: Text('${folder.children.length} items'),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: onTap,
       ),
     );
   }
 }
 
-class FileCard extends StatelessWidget {
-  final DocumentFile file;
+class DocumentCard extends StatelessWidget {
+  final Document document;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
-  const FileCard({
-    required this.file,
+  const DocumentCard({
+    super.key,
+    required this.document,
     required this.onTap,
     required this.onLongPress,
-    super.key,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bool isUploaded = file.status == DocumentStatus.uploaded;
-    final bool isUploading = file.status == DocumentStatus.uploading;
-
     IconData icon;
     Color iconColor;
     String subtitle;
-    Color subtitleColor;
+    String buttonText;
 
-    if (isUploading) {
-      icon = Icons.upload;
-      iconColor = Colors.red;
-      subtitle = 'Uploading...';
-      subtitleColor = Colors.red;
-    } else if (isUploaded) {
-      icon = Icons.check_circle;
-      iconColor = Colors.green;
-      subtitle = 'Uploaded';
-      subtitleColor = Colors.green;
-    } else {
-      icon = Icons.add_circle;
-      iconColor = Colors.grey;
-      subtitle = file.name.contains('Optional') ? 'Optional' : 'Upload the required files';
-      subtitleColor = Colors.grey;
+    switch (document.status) {
+      case DocumentStatus.uploaded:
+        icon = Icons.check_circle;
+        iconColor = Colors.green;
+        subtitle = document.name;
+        buttonText = 'View';
+        break;
+      case DocumentStatus.uploading:
+        icon = Icons.cloud_upload;
+        iconColor = Colors.blue;
+        subtitle = 'Uploading...';
+        buttonText = 'Uploading';
+        break;
+      case DocumentStatus.pending:
+        icon = Icons.add_circle;
+        iconColor = Colors.grey;
+        subtitle = document.name;
+        buttonText = 'Upload';
+        break;
     }
 
     return GestureDetector(
       onLongPress: onLongPress,
-      onTap: onTap,
       child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.only(bottom: 12),
+        elevation: 1,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
-        elevation: 1,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
+          padding: const EdgeInsets.all(16.0),
           child: Row(
             children: [
               Container(
@@ -343,9 +386,18 @@ class FileCard extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: iconColor.withOpacity(0.1),
                 ),
-                child: isUploading
-                    ? const CircularProgressIndicator(strokeWidth: 2)
-                    : Icon(icon, color: iconColor, size: 24),
+                child: Center(
+                  child: document.status == DocumentStatus.uploading
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(iconColor),
+                          ),
+                        )
+                      : Icon(icon, color: iconColor, size: 24),
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -353,7 +405,7 @@ class FileCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      file.name,
+                      document.name,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -365,8 +417,7 @@ class FileCard extends StatelessWidget {
                       subtitle,
                       style: TextStyle(
                         fontSize: 13,
-                        color: subtitleColor,
-                        fontStyle: isUploaded ? FontStyle.italic : null,
+                        color: Colors.grey[600],
                       ),
                     ),
                   ],
@@ -375,7 +426,7 @@ class FileCard extends StatelessWidget {
               SizedBox(
                 height: 30,
                 child: OutlinedButton(
-                  onPressed: isUploading ? null : onTap,
+                  onPressed: document.status == DocumentStatus.uploading ? null : onTap,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.grey[600],
                     side: BorderSide(color: Colors.grey[300]!),
@@ -386,7 +437,7 @@ class FileCard extends StatelessWidget {
                     visualDensity: VisualDensity.compact,
                   ),
                   child: Text(
-                    isUploaded ? 'View' : 'Upload',
+                    buttonText,
                     style: const TextStyle(fontSize: 13),
                   ),
                 ),
