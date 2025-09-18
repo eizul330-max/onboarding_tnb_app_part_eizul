@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_filex/open_filex.dart'; // Import the package
-import 'dart:io' as io; // Import dart:io, though not directly used for opening files in Flutter
-
-// git up
+import 'dart:io' as io;
 
 void main() {
   runApp(const TaskManager());
@@ -69,7 +67,6 @@ class DocumentManagerScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Required Documents Section
             Text(
               'Required Documents',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -85,7 +82,7 @@ class DocumentManagerScreen extends StatelessWidget {
             const SizedBox(height: 12),
             const DocumentCard(
               title: 'Sijil Tanggung Diri',
-              subtitle: 'Upload in Progress',
+              subtitle: 'Upload the required files',
             ),
             const SizedBox(height: 12),
             DocumentCard(
@@ -106,7 +103,7 @@ class DocumentManagerScreen extends StatelessWidget {
             DocumentCard(
               title: 'Identity Card (IC)',
               subtitle: 'Upload Required',
-              subtitleColor: Colors.red,
+              subtitleColor: Colors.grey[600],
             ),
             const SizedBox(height: 12),
             DocumentCard(
@@ -147,8 +144,20 @@ class DocumentCard extends StatefulWidget {
 
 class _DocumentCardState extends State<DocumentCard> {
   String? _selectedFileName;
+  String? _selectedFilePath; // New state variable to store the file path
   bool _isUploading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Initialize file name and path if an initial file is provided
+    if (widget.initialFile != null) {
+      // Note: This assumes the initialFile path is valid and accessible.
+      // In a real app, you would fetch this path from a database or a file system.
+      _selectedFileName = widget.initialFile;
+      _selectedFilePath = widget.initialFile;
+    }
+  }
 
   Future<void> _pickFile() async {
     setState(() {
@@ -160,7 +169,8 @@ class _DocumentCardState extends State<DocumentCard> {
       if (result != null) {
         PlatformFile file = result.files.first;
         setState(() {
-          _selectedFileName = file.name; // Update selected file name
+          _selectedFileName = file.name;
+          _selectedFilePath = file.path; // Store the absolute path
         });
         // Simulate upload delay
         await Future.delayed(const Duration(seconds: 2));
@@ -173,15 +183,16 @@ class _DocumentCardState extends State<DocumentCard> {
     } finally {
       if (mounted) {
         setState(() {
-          _isUploading = false; // Ensure uploading state is reset
+          _isUploading = false;
         });
       }
     }
   }
 
   Future<void> _openFile() async {
-    if (_selectedFileName != null) {
-      final result = await OpenFilex.open(_selectedFileName!);
+    // Now we check for the file path, which is the correct way
+    if (_selectedFilePath != null) {
+      final result = await OpenFilex.open(_selectedFilePath!);
       if (result.type != ResultType.done) {
         _showSnackbar('Error opening file: ${result.message}');
       } else {
@@ -195,6 +206,7 @@ class _DocumentCardState extends State<DocumentCard> {
   void _removeFile() {
     setState(() {
       _selectedFileName = null;
+      _selectedFilePath = null; // Also clear the path
       _showSnackbar('File removed successfully!');
     });
   }
@@ -209,7 +221,7 @@ class _DocumentCardState extends State<DocumentCard> {
 
   @override
   Widget build(BuildContext context) {
-    final bool hasFile = _selectedFileName != null;
+    final bool hasFile = _selectedFilePath != null; // Use the path to check for a file
 
     IconData cardIcon;
     Color cardIconColor;
@@ -300,7 +312,7 @@ class _DocumentCardState extends State<DocumentCard> {
                   SizedBox(
                     height: 30,
                     child: OutlinedButton(
-                      onPressed: _openFile, // Call the new _openFile function
+                      onPressed: _openFile,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.grey[600],
                         side: BorderSide(color: Colors.grey[300]!),
@@ -317,7 +329,7 @@ class _DocumentCardState extends State<DocumentCard> {
                   PopupMenuButton<String>(
                     onSelected: (String result) {
                       if (result == 'edit') {
-                        _pickFile(); // Re-use the pick file logic for 'Edit'
+                        _pickFile();
                       } else if (result == 'remove') {
                         _removeFile();
                       }
