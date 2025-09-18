@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:dio/dio.dart';
 
 // Enums to manage file status
 enum DocumentStatus { uploaded, pending, uploading }
@@ -44,6 +45,81 @@ class Folder extends FileItem {
   }
 }
 
+// Service class for managing file and folder data
+class FileManagerService {
+  final Dio _dio = Dio();
+  // TODO: Replace with your actual API base URL
+  final String _baseUrl = 'https://your-api-url.com/api';
+
+  // Placeholder data for demonstration
+  List<FileItem> _rootFolders = []; // The list is now empty
+
+  Future<List<FileItem>> getFoldersAndFiles({String? folderName}) async {
+    // TODO: Replace with your API GET request using Dio
+    // Example:
+    // final response = await _dio.get('$_baseUrl/files', queryParameters: {'folder': folderName});
+    // return response.data.map((json) => ...).toList();
+    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
+    if (folderName == null) {
+      return _rootFolders;
+    } else {
+      final folder = _rootFolders.firstWhere((f) => f.name == folderName && f is Folder) as Folder;
+      return folder.children;
+    }
+  }
+
+  Future<Folder> createFolder(String name) async {
+    // TODO: Replace with your API POST request using Dio
+    // Example:
+    // final response = await _dio.post('$_baseUrl/folders', data: {'name': name});
+    // return Folder.fromJson(response.data);
+    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
+    final newFolder = Folder(name: name, children: []);
+    _rootFolders.add(newFolder);
+    return newFolder;
+  }
+
+  Future<void> deleteFolder(Folder folder) async {
+    // TODO: Replace with your API DELETE request using Dio
+    // Example:
+    // await _dio.delete('$_baseUrl/folders/${folder.id}');
+    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
+    _rootFolders.remove(folder);
+  }
+
+  Future<Document> addFileToFolder(Folder parent, PlatformFile file) async {
+    // TODO: Replace with your API POST request for file upload using Dio
+    // Example:
+    // final formData = FormData.fromMap({'file': await MultipartFile.fromFile(file.path!)});
+    // final response = await _dio.post('$_baseUrl/folders/${parent.id}/files', data: formData);
+    // return Document.fromJson(response.data);
+    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
+    final newFile = Document(name: file.name!, path: file.path!, status: DocumentStatus.uploaded);
+    parent.children.add(newFile);
+    return newFile;
+  }
+
+  Future<void> removeFile(Document file) async {
+    // TODO: Replace with your API DELETE request for file
+    // Example:
+    // await _dio.delete('$_baseUrl/files/${file.id}');
+    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
+  }
+
+  Future<void> editFile(Document file, PlatformFile newFile) async {
+    // TODO: Replace with your API PUT request for file
+    // Example:
+    // final formData = FormData.fromMap({'file': await MultipartFile.fromFile(newFile.path!)});
+    // await _dio.put('$_baseUrl/files/${file.id}', data: formData);
+    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
+  }
+
+  void sortFolders() {
+    _rootFolders.sort((a, b) => a.name.compareTo(b.name));
+  }
+}
+
+// NOTE: This class name was changed from DocumentManagerScreen
 class DocumentManagerScreen extends StatefulWidget {
   const DocumentManagerScreen({super.key});
 
@@ -52,100 +128,104 @@ class DocumentManagerScreen extends StatefulWidget {
 }
 
 class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
-  List<FileItem> _rootFolders = [];
-  List<FileItem> _currentDirectory = [];
-  String _currentPath = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _currentDirectory = _rootFolders;
-    _currentPath = 'Home';
-  }
+  final FileManagerService _fileManagerService = FileManagerService();
+  String _currentPath = 'Home';
+  Folder? _currentParentFolder;
 
   void _navigateToFolder(Folder folder) {
     setState(() {
-      _currentDirectory = folder.children;
+      _currentParentFolder = folder;
       _currentPath = folder.name;
     });
   }
 
   void _goBack() {
     setState(() {
-      _currentDirectory = _rootFolders;
+      _currentParentFolder = null;
       _currentPath = 'Home';
     });
   }
 
-  Future<void> _pickAndUploadFile(Document doc) async {
-    setState(() {
-      final docIndex = _currentDirectory.indexOf(doc);
-      if (docIndex != -1) {
-        _currentDirectory[docIndex] = doc.copyWith(status: DocumentStatus.uploading);
-      }
-    });
-
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles();
-      if (result != null) {
-        final platformFile = result.files.first;
-        final docIndex = _currentDirectory.indexOf(doc);
-        if (docIndex != -1) {
-          setState(() {
-            _currentDirectory[docIndex] = Document(
-              name: platformFile.name!,
-              path: platformFile.path!,
-              status: DocumentStatus.uploaded,
-            );
-          });
-        }
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          final docIndex = _currentDirectory.indexOf(doc);
-          if (docIndex != -1) {
-            final item = _currentDirectory[docIndex];
-            if (item is Document) {
-              _currentDirectory[docIndex] = item.copyWith(
-                status: item.path.isNotEmpty ? DocumentStatus.uploaded : DocumentStatus.pending,
-              );
-            }
-          }
-        });
-      }
-    }
+  void _createFolder() {
+    TextEditingController controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Create New Folder'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(hintText: 'Folder Name'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (controller.text.isNotEmpty) {
+                  Navigator.pop(context);
+                  await _fileManagerService.createFolder(controller.text);
+                  setState(() {}); // Trigger a rebuild to refresh the UI
+                  _showSnackbar('Folder "${controller.text}" created.');
+                }
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _addFileToCurrentFolder() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles();
-    if (result != null) {
+    if (result != null && _currentParentFolder != null) {
       final platformFile = result.files.first;
-      setState(() {
-        _currentDirectory.add(Document(
-          name: platformFile.name!,
-          path: platformFile.path!,
-          status: DocumentStatus.uploaded,
-        ));
-      });
+      await _fileManagerService.addFileToFolder(_currentParentFolder!, platformFile);
+      setState(() {}); // Trigger a rebuild to refresh the UI
       _showSnackbar('File "${platformFile.name}" added successfully!');
     }
-  }
-
-  void _removeFile(Document doc) {
-    setState(() {
-      final docIndex = _currentDirectory.indexOf(doc);
-      if (docIndex != -1) {
-        _currentDirectory[docIndex] = doc.copyWith(path: '', status: DocumentStatus.pending);
-      }
-    });
-    _showSnackbar('File removed successfully!');
   }
 
   void _openFile(Document doc) async {
     if (doc.path.isNotEmpty) {
       await OpenFilex.open(doc.path);
     }
+  }
+
+  void _removeFile(Document doc) async {
+    // This is the new line that fixes the issue
+    _currentParentFolder?.children.remove(doc);
+
+    // This line is for API calls, which is currently a placeholder
+    await _fileManagerService.removeFile(doc);
+
+    setState(() {}); // Trigger a rebuild to refresh the UI
+    _showSnackbar('File removed successfully!');
+  }
+
+  void _deleteFolder(Folder folder) async {
+    await _fileManagerService.deleteFolder(folder);
+    setState(() {}); // Trigger a rebuild to refresh the UI
+    _showSnackbar('Folder "${folder.name}" deleted.');
+  }
+
+  void _editFile(Document doc) async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    if (result != null) {
+      final newFile = result.files.first;
+      await _fileManagerService.editFile(doc, newFile);
+      setState(() {}); // Trigger a rebuild to refresh the UI
+      _showSnackbar('File "${doc.name}" updated successfully!');
+    }
+  }
+
+  void _sortFolders() {
+    _fileManagerService.sortFolders();
+    setState(() {}); // Trigger a rebuild to refresh the UI
+    _showSnackbar('Folders sorted alphabetically.');
   }
 
   void _showSnackbar(String message) {
@@ -166,7 +246,7 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
               title: const Text('Edit'),
               onTap: () {
                 Navigator.pop(context);
-                _pickAndUploadFile(doc);
+                _editFile(doc);
               },
             ),
             ListTile(
@@ -195,7 +275,6 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
               title: const Text('Move'),
               onTap: () {
                 Navigator.pop(context);
-                // Implementation for moving folder
                 _showSnackbar('Move functionality coming soon!');
               },
             ),
@@ -211,53 +290,6 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
         ),
       ),
     );
-  }
-  
-  void _deleteFolder(Folder folder) {
-    setState(() {
-      _rootFolders.removeWhere((item) => item is Folder && item.name == folder.name);
-    });
-    _showSnackbar('Folder "${folder.name}" deleted.');
-  }
-
-  void _createFolder() {
-    TextEditingController controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Create New Folder'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(hintText: 'Folder Name'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (controller.text.isNotEmpty) {
-                  setState(() {
-                    _rootFolders.add(Folder(name: controller.text, children: []));
-                  });
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text('Create'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _sortFolders() {
-    setState(() {
-      _rootFolders.sort((a, b) => a.name.compareTo(b.name));
-    });
-    _showSnackbar('Folders sorted alphabetically.');
   }
 
   @override
@@ -294,31 +326,50 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
             ),
         ],
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16.0),
-        itemCount: _currentDirectory.length,
-        itemBuilder: (context, index) {
-          final item = _currentDirectory[index];
-          if (item is Folder) {
-            return FolderCard(
-              folder: item,
-              onTap: () => _navigateToFolder(item),
-              onMenuTap: () => _showFolderContextMenu(item),
+      body: FutureBuilder<List<FileItem>>(
+        future: _fileManagerService.getFoldersAndFiles(folderName: _currentParentFolder?.name),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return Center(
+              child: Text(
+                isRoot ? 'No folders yet.' : 'This folder is empty.',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
             );
-          } else if (item is Document) {
-            return DocumentCard(
-              document: item,
-              onTap: () {
-                if (item.status == DocumentStatus.uploaded) {
-                  _openFile(item);
-                } else {
-                  _pickAndUploadFile(item);
+          } else {
+            final currentDirectory = snapshot.data!;
+            return ListView.builder(
+              padding: const EdgeInsets.all(16.0),
+              itemCount: currentDirectory.length,
+              itemBuilder: (context, index) {
+                final item = currentDirectory[index];
+                if (item is Folder) {
+                  return FolderCard(
+                    folder: item,
+                    onTap: () => _navigateToFolder(item),
+                    onMenuTap: () => _showFolderContextMenu(item),
+                  );
+                } else if (item is Document) {
+                  return DocumentCard(
+                    document: item,
+                    onTap: () {
+                      if (item.status == DocumentStatus.uploaded) {
+                        _openFile(item);
+                      } else {
+                        _editFile(item);
+                      }
+                    },
+                    onMenuTap: () => _showFileContextMenu(item),
+                  );
                 }
+                return Container();
               },
-              onMenuTap: () => _showFileContextMenu(item),
             );
           }
-          return Container();
         },
       ),
       floatingActionButton: FloatingActionButton(
