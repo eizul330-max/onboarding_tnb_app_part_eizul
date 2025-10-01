@@ -507,7 +507,7 @@ class SupabaseService {
 Future<void> signInWithFirebaseToken(String firebaseToken) async {
   try {
     await client.auth.signInWithIdToken( // Use the current signInWithIdToken method
-      provider: OAuthProvider.firebase,
+      provider: OAuthProvider.idToken,
       idToken: firebaseToken,
     );
   } catch (e) {

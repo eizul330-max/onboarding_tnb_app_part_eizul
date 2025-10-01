@@ -70,7 +70,7 @@ class _MyAppState extends State<MyApp> {
 
       // 2. Use the token to sign into Supabase.
       await Supabase.instance.client.auth.signInWithIdToken(
-        provider: OAuthProvider.firebase,
+        provider: OAuthProvider.idToken,
         idToken: idToken,
       );
       return true;
