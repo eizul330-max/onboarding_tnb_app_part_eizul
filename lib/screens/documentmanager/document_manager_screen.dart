@@ -1,125 +1,10 @@
+// document_manager_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:open_filex/open_filex.dart';
-import 'package:dio/dio.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:onboarding_tnb_app_part_eizul/services/supabase_service.dart';
 
-// Enums to manage file status
-enum DocumentStatus { uploaded, pending, uploading }
-
-// Data model for a single file or a folder
-abstract class FileItem {
-  final String name;
-  FileItem({required this.name});
-}
-
-// Represents a single file
-class Document extends FileItem {
-  final String path;
-  final DocumentStatus status;
-
-  Document({
-    required super.name,
-    required this.path,
-    this.status = DocumentStatus.pending,
-  });
-
-  Document copyWith({String? name, String? path, DocumentStatus? status}) {
-    return Document(
-      name: name ?? this.name,
-      path: path ?? this.path,
-      status: status ?? this.status,
-    );
-  }
-}
-
-// Represents a folder
-class Folder extends FileItem {
-  final List<FileItem> children;
-  Folder({required super.name, required this.children});
-
-  Folder copyWith({String? name, List<FileItem>? children}) {
-    return Folder(
-      name: name ?? this.name,
-      children: children ?? this.children,
-    );
-  }
-}
-
-// Service class for managing file and folder data
-class FileManagerService {
-  final Dio _dio = Dio();
-  // TODO: Replace with your actual API base URL
-  final String _baseUrl = 'https://your-api-url.com/api';
-
-  // Placeholder data for demonstration
-  List<FileItem> _rootFolders = []; // The list is now empty
-
-  Future<List<FileItem>> getFoldersAndFiles({String? folderName}) async {
-    // TODO: Replace with your API GET request using Dio
-    // Example:
-    // final response = await _dio.get('$_baseUrl/files', queryParameters: {'folder': folderName});
-    // return response.data.map((json) => ...).toList();
-    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
-    if (folderName == null) {
-      return _rootFolders;
-    } else {
-      final folder = _rootFolders.firstWhere((f) => f.name == folderName && f is Folder) as Folder;
-      return folder.children;
-    }
-  }
-
-  Future<Folder> createFolder(String name) async {
-    // TODO: Replace with your API POST request using Dio
-    // Example:
-    // final response = await _dio.post('$_baseUrl/folders', data: {'name': name});
-    // return Folder.fromJson(response.data);
-    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
-    final newFolder = Folder(name: name, children: []);
-    _rootFolders.add(newFolder);
-    return newFolder;
-  }
-
-  Future<void> deleteFolder(Folder folder) async {
-    // TODO: Replace with your API DELETE request using Dio
-    // Example:
-    // await _dio.delete('$_baseUrl/folders/${folder.id}');
-    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
-    _rootFolders.remove(folder);
-  }
-
-  Future<Document> addFileToFolder(Folder parent, PlatformFile file) async {
-    // TODO: Replace with your API POST request for file upload using Dio
-    // Example:
-    // final formData = FormData.fromMap({'file': await MultipartFile.fromFile(file.path!)});
-    // final response = await _dio.post('$_baseUrl/folders/${parent.id}/files', data: formData);
-    // return Document.fromJson(response.data);
-    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
-    final newFile = Document(name: file.name!, path: file.path!, status: DocumentStatus.uploaded);
-    parent.children.add(newFile);
-    return newFile;
-  }
-
-  Future<void> removeFile(Document file) async {
-    // TODO: Replace with your API DELETE request for file
-    // Example:
-    // await _dio.delete('$_baseUrl/files/${file.id}');
-    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
-  }
-
-  Future<void> editFile(Document file, PlatformFile newFile) async {
-    // TODO: Replace with your API PUT request for file
-    // Example:
-    // final formData = FormData.fromMap({'file': await MultipartFile.fromFile(newFile.path!)});
-    // await _dio.put('$_baseUrl/files/${file.id}', data: formData);
-    await Future.delayed(const Duration(milliseconds: 500)); // Simulate network delay
-  }
-
-  void sortFolders() {
-    _rootFolders.sort((a, b) => a.name.compareTo(b.name));
-  }
-}
-
-// NOTE: This class name was changed from DocumentManagerScreen
 class DocumentManagerScreen extends StatefulWidget {
   const DocumentManagerScreen({super.key});
 
@@ -128,27 +13,53 @@ class DocumentManagerScreen extends StatefulWidget {
 }
 
 class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
-  final FileManagerService _fileManagerService = FileManagerService();
-  String _currentPath = 'Home';
-  Folder? _currentParentFolder;
+  // Change the service to SupabaseFileService
+  late final SupabaseService _fileManagerService;
+  late Future<List<dynamic>> _filesFuture;
+
+  // --- NAVIGATION IMPROVEMENT ---
+  // Use a list to track the navigation path (breadcrumb)
+  final List<_PathSegment> _pathHistory = [];
+  String? _currentParentFolderId;
+
+  @override
+  void initState() {
+    super.initState();
+    // Start at the root
+    _pathHistory.add(_PathSegment(id: null, name: 'Home'));
+    _fileManagerService = SupabaseService();
+    _loadFiles();
+  }
+
+  void _loadFiles() {
+    setState(() {
+      _filesFuture = _fileManagerService.getFoldersAndFiles(folderId: _currentParentFolderId);
+    });
+  }
 
   void _navigateToFolder(Folder folder) {
     setState(() {
-      _currentParentFolder = folder;
-      _currentPath = folder.name;
+      // Add the new folder to our path history
+      _pathHistory.add(_PathSegment(id: folder.id, name: folder.name));
+      _currentParentFolderId = folder.id;
+      _loadFiles();
     });
   }
 
   void _goBack() {
-    setState(() {
-      _currentParentFolder = null;
-      _currentPath = 'Home';
-    });
+    if (_pathHistory.length > 1) {
+      setState(() {
+        // Remove the current folder from history to go up one level
+        _pathHistory.removeLast();
+        _currentParentFolderId = _pathHistory.last.id;
+        _loadFiles();
+      });
+    }
   }
 
-  void _createFolder() {
+  void _createFolder() async {
     TextEditingController controller = TextEditingController();
-    showDialog(
+    await showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -165,10 +76,14 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (controller.text.isNotEmpty) {
-                  Navigator.pop(context);
-                  await _fileManagerService.createFolder(controller.text);
-                  setState(() {}); // Trigger a rebuild to refresh the UI
-                  _showSnackbar('Folder "${controller.text}" created.');
+                  try {
+                    Navigator.pop(context);
+                    await _fileManagerService.createFolder(controller.text, parentId: _currentParentFolderId);
+                    _loadFiles();
+                    _showSnackbar('Folder "${controller.text}" created.');
+                  } catch (e) {
+                    _showSnackbar('Error creating folder: $e');
+                  }
                 }
               },
               child: const Text('Create'),
@@ -180,52 +95,72 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
   }
 
   void _addFileToCurrentFolder() async {
+    if (_currentParentFolderId == null) {
+      _showSnackbar('Please enter a folder to add a file');
+      return;
+    }
+
     FilePickerResult? result = await FilePicker.platform.pickFiles();
-    if (result != null && _currentParentFolder != null) {
-      final platformFile = result.files.first;
-      await _fileManagerService.addFileToFolder(_currentParentFolder!, platformFile);
-      setState(() {}); // Trigger a rebuild to refresh the UI
-      _showSnackbar('File "${platformFile.name}" added successfully!');
+    if (result != null) {
+      try {
+        final platformFile = result.files.first;
+        await _fileManagerService.addFileToFolder(_currentParentFolderId!, platformFile);
+        _loadFiles();
+        _showSnackbar('File "${platformFile.name}" added successfully!');
+      } catch (e) {
+        _showSnackbar('Error adding file: $e');
+      }
     }
   }
 
   void _openFile(Document doc) async {
-    if (doc.path.isNotEmpty) {
-      await OpenFilex.open(doc.path);
+    try {
+      final downloadUrl = await _fileManagerService.getDownloadUrl(doc);
+      final uri = Uri.parse(downloadUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        _showSnackbar('Could not launch URL');
+      }
+    } catch (e) {
+      _showSnackbar('Failed to open file: $e');
     }
   }
 
   void _removeFile(Document doc) async {
-    // This is the new line that fixes the issue
-    _currentParentFolder?.children.remove(doc);
-
-    // This line is for API calls, which is currently a placeholder
-    await _fileManagerService.removeFile(doc);
-
-    setState(() {}); // Trigger a rebuild to refresh the UI
-    _showSnackbar('File removed successfully!');
+    try {
+      await _fileManagerService.removeFile(doc);
+      _loadFiles();
+      _showSnackbar('File removed successfully!');
+    } catch (e) {
+      _showSnackbar('Error removing file: $e');
+    }
   }
 
   void _deleteFolder(Folder folder) async {
-    await _fileManagerService.deleteFolder(folder);
-    setState(() {}); // Trigger a rebuild to refresh the UI
-    _showSnackbar('Folder "${folder.name}" deleted.');
+    try {
+      await _fileManagerService.deleteFolder(folder.id);
+      _loadFiles();
+      _showSnackbar('Folder "${folder.name}" deleted.');
+    } catch (e) {
+      _showSnackbar('Error deleting folder: $e');
+    }
   }
 
   void _editFile(Document doc) async {
     FilePickerResult? result = await FilePicker.platform.pickFiles();
     if (result != null) {
-      final newFile = result.files.first;
-      await _fileManagerService.editFile(doc, newFile);
-      setState(() {}); // Trigger a rebuild to refresh the UI
-      _showSnackbar('File "${doc.name}" updated successfully!');
+      try {
+        final newFile = result.files.first;
+        // Note: The name of the document in the list won't change,
+        // only its content is replaced.
+        await _fileManagerService.editFile(doc, newFile);
+        _loadFiles();
+        _showSnackbar('File "${doc.name}" updated successfully!');
+      } catch (e) {
+        _showSnackbar('Error updating file: $e');
+      }
     }
-  }
-
-  void _sortFolders() {
-    _fileManagerService.sortFolders();
-    setState(() {}); // Trigger a rebuild to refresh the UI
-    _showSnackbar('Folders sorted alphabetically.');
   }
 
   void _showSnackbar(String message) {
@@ -271,14 +206,6 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.drive_file_move_outlined),
-              title: const Text('Move'),
-              onTap: () {
-                Navigator.pop(context);
-                _showSnackbar('Move functionality coming soon!');
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.delete),
               title: const Text('Delete'),
               onTap: () {
@@ -294,11 +221,26 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isRoot = _currentPath == 'Home';
+    final currentPathSegment = _pathHistory.last;
+    final bool isRoot = currentPathSegment.id == null;
+
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: Text(_currentPath),
+        // --- BREADCRUMB IMPROVEMENT ---
+        // Display the current path as a breadcrumb trail
+        title: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          reverse: true, // Keep the current folder in view
+          child: Row(
+            children: _pathHistory.map((segment) {
+              return Text(
+                '${segment.name} ${segment == currentPathSegment ? '' : '> '}',
+                style: TextStyle(fontSize: 18, fontWeight: segment == currentPathSegment ? FontWeight.bold : FontWeight.normal),
+              );
+            }).toList(),
+          ),
+        ),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -309,25 +251,9 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
                 icon: const Icon(Icons.arrow_back),
                 onPressed: _goBack,
               ),
-        actions: [
-          if (isRoot)
-            PopupMenuButton<String>(
-              onSelected: (String result) {
-                if (result == 'sort') {
-                  _sortFolders();
-                }
-              },
-              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                const PopupMenuItem<String>(
-                  value: 'sort',
-                  child: Text('Sort by Name (A-Z)'),
-                ),
-              ],
-            ),
-        ],
       ),
-      body: FutureBuilder<List<FileItem>>(
-        future: _fileManagerService.getFoldersAndFiles(folderName: _currentParentFolder?.name),
+      body: FutureBuilder<List<dynamic>>(
+        future: _filesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -357,11 +283,7 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
                   return DocumentCard(
                     document: item,
                     onTap: () {
-                      if (item.status == DocumentStatus.uploaded) {
-                        _openFile(item);
-                      } else {
-                        _editFile(item);
-                      }
+                      _openFile(item);
                     },
                     onMenuTap: () => _showFileContextMenu(item),
                   );
@@ -380,6 +302,15 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
     );
   }
 }
+
+// Helper class for breadcrumb navigation
+class _PathSegment {
+  final String? id;
+  final String name;
+
+  _PathSegment({required this.id, required this.name});
+}
+
 
 class FolderCard extends StatelessWidget {
   final Folder folder;
@@ -403,7 +334,6 @@ class FolderCard extends StatelessWidget {
           folder.name,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        subtitle: Text('${folder.children.length} items'),
         trailing: IconButton(
           icon: const Icon(Icons.more_vert),
           onPressed: onMenuTap,
@@ -428,32 +358,6 @@ class DocumentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    IconData icon;
-    Color iconColor;
-    String subtitle;
-    String buttonText;
-
-    switch (document.status) {
-      case DocumentStatus.uploaded:
-        icon = Icons.check_circle;
-        iconColor = Colors.green;
-        subtitle = document.name;
-        buttonText = 'View';
-        break;
-      case DocumentStatus.uploading:
-        icon = Icons.cloud_upload;
-        iconColor = Colors.blue;
-        subtitle = 'Uploading...';
-        buttonText = 'Uploading';
-        break;
-      case DocumentStatus.pending:
-        icon = Icons.add_circle;
-        iconColor = Colors.grey;
-        subtitle = document.name;
-        buttonText = 'Upload';
-        break;
-    }
-
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 1,
@@ -465,21 +369,12 @@ class DocumentCard extends StatelessWidget {
         leading: Container(
           width: 40,
           height: 40,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            color: iconColor.withOpacity(0.1),
+            color: Colors.lightGreen,
           ),
-          child: Center(
-            child: document.status == DocumentStatus.uploading
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(iconColor),
-                    ),
-                  )
-                : Icon(icon, color: iconColor, size: 24),
+          child: const Center(
+            child: Icon(Icons.description, color: Colors.white, size: 24),
           ),
         ),
         title: Text(
@@ -490,20 +385,13 @@ class DocumentCard extends StatelessWidget {
             color: Colors.black87,
           ),
         ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(
-            fontSize: 13,
-            color: Colors.grey[600],
-          ),
-        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
               height: 30,
               child: OutlinedButton(
-                onPressed: document.status == DocumentStatus.uploading ? null : onTap,
+                onPressed: onTap,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.grey[600],
                   side: BorderSide(color: Colors.grey[300]!),
@@ -513,9 +401,9 @@ class DocumentCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   visualDensity: VisualDensity.compact,
                 ),
-                child: Text(
-                  buttonText,
-                  style: const TextStyle(fontSize: 13),
+                child: const Text(
+                  'View',
+                  style: TextStyle(fontSize: 13),
                 ),
               ),
             ),

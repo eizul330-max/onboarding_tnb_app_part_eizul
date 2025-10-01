@@ -3,45 +3,27 @@ import 'package:file_picker/file_picker.dart';
 import 'package:open_filex/open_filex.dart'; // Import the package
 import 'dart:io' as io;
 
-//git up
-
-void main() {
-  runApp(const TaskManager());
-}
-
-class TaskManager extends StatelessWidget {
-  const TaskManager({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Document Manager UI',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
-        useMaterial3: true,
-      ),
-      debugShowCheckedModeBanner: false,
-      home: const TaskManagerScreen(),
-    );
-  }
-}
-
 class TaskManagerScreen extends StatelessWidget {
   const TaskManagerScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final Color scaffoldBackground = Theme.of(context).scaffoldBackgroundColor;
+    final Color textColor = Theme.of(context).colorScheme.onBackground;
+    final Color hintColor = isDarkMode ? Colors.grey[400]! : Colors.grey[600]!;
+
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: scaffoldBackground,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Task Manager',
-          style: TextStyle(color: Colors.black),
+          style: TextStyle(color: textColor),
         ),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: const Color.fromARGB(0, 255, 255, 255),
-        foregroundColor: Colors.black,
+        backgroundColor: Colors.transparent,
+        foregroundColor: textColor,
         automaticallyImplyLeading: false,
         leading: Center(
           child: InkWell(
@@ -73,24 +55,26 @@ class TaskManagerScreen extends StatelessWidget {
               'Required Documents',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
+                    color: textColor,
                   ),
             ),
             const SizedBox(height: 16),
-            const DocumentCard(
+            DocumentCard(
               title: 'Lampiran A',
               subtitle: 'Upload the required files',
-              subtitleColor: Colors.grey,
+              subtitleColor: hintColor,
             ),
             const SizedBox(height: 12),
-            const DocumentCard(
+            DocumentCard(
               title: 'Sijil Tanggung Diri',
               subtitle: 'Upload the required files',
+              subtitleColor: hintColor,
             ),
             const SizedBox(height: 12),
             DocumentCard(
               title: 'Penyata Bank',
               subtitle: 'Upload the required files',
-              subtitleColor: Colors.grey[600],
+              subtitleColor: hintColor,
             ),
             const SizedBox(height: 32),
             // Private Details and Certs Section
@@ -98,26 +82,26 @@ class TaskManagerScreen extends StatelessWidget {
               'Private Details and Certs',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                    color: textColor,
                   ),
             ),
             const SizedBox(height: 16),
             DocumentCard(
               title: 'Identity Card (IC)',
               subtitle: 'Upload Required',
-              subtitleColor: Colors.grey[600],
+              subtitleColor: hintColor,
             ),
             const SizedBox(height: 12),
             DocumentCard(
               title: 'Driving License',
               subtitle: 'Optional',
-              subtitleColor: Colors.grey[600],
+              subtitleColor: hintColor,
             ),
             const SizedBox(height: 12),
             DocumentCard(
               title: 'Certificates',
               subtitle: 'Optional',
-              subtitleColor: Colors.grey[600],
+              subtitleColor: hintColor,
             ),
           ],
         ),
@@ -223,6 +207,12 @@ class _DocumentCardState extends State<DocumentCard> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final Color cardColor = Theme.of(context).cardColor;
+    final Color textColor = Theme.of(context).colorScheme.onBackground;
+    final Color hintColor = isDarkMode ? Colors.grey[400]! : Colors.grey[600]!;
+    final Color borderColor = isDarkMode ? Colors.grey[700]! : Colors.grey[300]!;
+
     final bool hasFile = _selectedFilePath != null; // Use the path to check for a file
 
     IconData cardIcon;
@@ -242,9 +232,9 @@ class _DocumentCardState extends State<DocumentCard> {
       currentSubtitleColor = Colors.green;
     } else {
       cardIcon = Icons.add_circle;
-      cardIconColor = Colors.grey;
+      cardIconColor = hintColor;
       currentSubtitle = widget.subtitle;
-      currentSubtitleColor = widget.subtitleColor ?? Colors.grey[600]!;
+      currentSubtitleColor = widget.subtitleColor ?? hintColor;
     }
 
     return Card(
@@ -252,7 +242,8 @@ class _DocumentCardState extends State<DocumentCard> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
-      elevation: 1,
+      elevation: isDarkMode ? 0 : 1,
+      color: cardColor,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
         child: Row(
@@ -286,10 +277,10 @@ class _DocumentCardState extends State<DocumentCard> {
                 children: [
                   Text(
                     widget.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black87,
+                      color: textColor,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -316,15 +307,15 @@ class _DocumentCardState extends State<DocumentCard> {
                     child: OutlinedButton(
                       onPressed: _openFile,
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.grey[600],
-                        side: BorderSide(color: Colors.grey[300]!),
+                        foregroundColor: hintColor,
+                        side: BorderSide(color: borderColor),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         visualDensity: VisualDensity.compact,
                       ),
-                      child: const Text('View', style: TextStyle(fontSize: 13)),
+                      child: Text('View', style: TextStyle(fontSize: 13, color: hintColor)),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -337,28 +328,28 @@ class _DocumentCardState extends State<DocumentCard> {
                       }
                     },
                     itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                      const PopupMenuItem<String>(
+                      PopupMenuItem<String>(
                         value: 'edit',
                         child: Row(
                           children: [
-                            Icon(Icons.edit, size: 20),
-                            SizedBox(width: 8),
-                            Text('Edit'),
+                            Icon(Icons.edit, size: 20, color: textColor),
+                            const SizedBox(width: 8),
+                            Text('Edit', style: TextStyle(color: textColor)),
                           ],
                         ),
                       ),
-                      const PopupMenuItem<String>(
+                      PopupMenuItem<String>(
                         value: 'remove',
                         child: Row(
                           children: [
                             Icon(Icons.delete, size: 20, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('Remove'),
+                            const SizedBox(width: 8),
+                            Text('Remove', style: TextStyle(color: textColor)),
                           ],
                         ),
                       ),
                     ],
-                    icon: Icon(Icons.more_vert, color: Colors.grey[600]),
+                    icon: Icon(Icons.more_vert, color: hintColor),
                     padding: EdgeInsets.zero,
                   )
                 ],
@@ -369,15 +360,15 @@ class _DocumentCardState extends State<DocumentCard> {
                 child: OutlinedButton(
                   onPressed: _pickFile,
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey[600],
-                    side: BorderSide(color: Colors.grey[300]!),
+                    foregroundColor: hintColor,
+                    side: BorderSide(color: borderColor),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     visualDensity: VisualDensity.compact,
                   ),
-                  child: const Text('Upload', style: TextStyle(fontSize: 13)),
+                  child: Text('Upload', style: TextStyle(fontSize: 13, color: hintColor)),
                 ),
               ),
           ],
