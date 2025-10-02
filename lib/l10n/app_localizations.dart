@@ -196,18 +196,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Something went wrong!'**
   String get somethingWentWrong;
-
-  /// No description provided for @failedToSync.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to sync with the database. Please try again.'**
-  String get failedToSync;
-
-  /// No description provided for @retry.
-  ///
-  /// In en, this message translates to:
-  /// **'Retry'**
-  String get retry;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

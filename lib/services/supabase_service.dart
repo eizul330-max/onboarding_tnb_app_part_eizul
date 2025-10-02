@@ -503,18 +503,4 @@ class SupabaseService {
       throw Exception('Failed to get download URL: $e');
     }
   }
-
-Future<void> signInWithFirebaseToken(String firebaseToken) async {
-  try {
-    await client.auth.signInWithIdToken( // Use the current signInWithIdToken method
-      provider: OAuthProvider.idToken,
-      idToken: firebaseToken,
-    );
-  } catch (e) {
-    // Handle the Supabase sign-in error
-    print('Supabase sign-in failed: $e');
-    throw Exception('Failed to sign in to Supabase: $e');
-  }
-}
-
 }

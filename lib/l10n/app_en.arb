@@ -16,6 +16,5 @@
   "preferences": "Preferences",
   "account": "Account",
   "about": "About",
-  "somethingWentWrong": "Something went wrong!",
-  "failedToSync": "Failed to sync with the database. Please try again."
+  "somethingWentWrong": "Something went wrong!"
 }

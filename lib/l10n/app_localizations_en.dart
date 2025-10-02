@@ -58,10 +58,4 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get somethingWentWrong => 'Something went wrong!';
-
-  @override
-  String get failedToSync => 'Failed to sync with the database. Please try again.';
-
-  @override
-  String get retry => 'Retry';
 }

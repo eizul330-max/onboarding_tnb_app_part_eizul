@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/buddy_model.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../widgets/message_bubble.dart';
 import '../../widgets/quick_reply_button.dart';
@@ -22,14 +23,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final List<Message> _messages = [];
   final ScrollController _scrollController = ScrollController();
-
-  final List<QuickReply> _quickReplies = [
-    QuickReply('How do I request time off?', 'HR'),
-    QuickReply('What is the WiFi password?', 'Technical'),
-    QuickReply('How to access company portal?', 'Technical'),
-    QuickReply('Benefits enrollment period?', 'HR'),
-    QuickReply('Emergency contact update?', 'HR'),
-  ];
+  List<QuickReply> _quickReplies = [];
 
   @override
   void initState() {
@@ -40,22 +34,38 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_quickReplies.isEmpty) {
+      final l10n = AppLocalizations.of(context)!;
+      _quickReplies = [
+        QuickReply(l10n.quickReplyTimeOff, 'HR'),
+        QuickReply(l10n.quickReplyWifi, 'Technical'),
+        QuickReply(l10n.quickReplyPortal, 'Technical'),
+        QuickReply(l10n.quickReplyBenefits, 'HR'),
+        QuickReply(l10n.quickReplyEmergencyContact, 'HR'),
+      ];
+    }
+  }
+
   void _addWelcomeMessage() {
     _messages.add(Message(
       id: DateTime.now().toString(),
       senderId: widget.buddy.id,
       senderName: widget.buddy.name,
-      text: _getWelcomeMessage(),
+      text: _getWelcomeMessage(context),
       timestamp: DateTime.now(),
       isMe: false,
     ));
   }
 
-  String _getWelcomeMessage() {
+  String _getWelcomeMessage(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     if (widget.buddy.department == 'HR') {
-      return "Hi! I'm ${widget.buddy.name}, your HR buddy. I'm here to help with any questions about company policies, benefits, or workplace culture. How can I assist you today?";
+      return l10n.chatWelcomeHR(widget.buddy.name);
     } else {
-      return "Hello! I'm ${widget.buddy.name} from Technical Support. I can help you with software, hardware, or access issues. What seems to be the problem?";
+      return l10n.chatWelcomeTechnical(widget.buddy.name);
     }
   }
 
@@ -77,7 +87,7 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 Text(widget.buddy.name),
                 Text(
-                  widget.buddy.isOnline ? 'Online' : 'Offline',
+                  widget.buddy.isOnline ? AppLocalizations.of(context)!.online : AppLocalizations.of(context)!.offline,
                   style: TextStyle(fontSize: 12),
                 ),
               ],
@@ -158,7 +168,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: TextField(
                     controller: _messageController,
                     decoration: InputDecoration(
-                      hintText: 'Type a message...',
+                      hintText: AppLocalizations.of(context)!.typeAMessage,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                       ),
@@ -243,7 +253,7 @@ class _ChatScreenState extends State<ChatScreen> {
         id: DateTime.now().toString(),
         senderId: widget.buddy.id,
         senderName: widget.buddy.name,
-        text: _generateReply(userMessage),
+        text: _generateReply(userMessage, context),
         timestamp: DateTime.now(),
         isMe: false,
       ));
@@ -251,18 +261,19 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
-  String _generateReply(String userMessage) {
+  String _generateReply(String userMessage, BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     // Simple AI-like response generation
     if (userMessage.toLowerCase().contains('password') || 
         userMessage.toLowerCase().contains('wifi')) {
-      return "The WiFi password is 'Company2024!'. You can find this information in your onboarding package as well.";
+      return l10n.chatReplyWifi;
     } else if (userMessage.toLowerCase().contains('time off') || 
                userMessage.toLowerCase().contains('leave')) {
-      return "You can request time off through our HR portal. Go to Portal > Time Off > New Request. Need help accessing the portal?";
+      return l10n.chatReplyTimeOff;
     } else if (userMessage.toLowerCase().contains('benefit')) {
-      return "Benefits enrollment is open for the first 30 days of employment. I can send you the benefits guide. Would you like me to do that?";
+      return l10n.chatReplyBenefits;
     } else {
-      return "Thanks for your question. Let me check that for you. In the meantime, is there anything else I can help with?";
+      return l10n.chatReplyDefault;
     }
   }
 
@@ -297,7 +308,7 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               ListTile(
                 leading: Icon(Icons.history),
-                title: Text('Chat History'),
+                title: Text(AppLocalizations.of(context)!.chatHistory),
                 onTap: () {
                   Navigator.pop(context);
                   // Navigate to chat history
@@ -305,7 +316,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               ListTile(
                 leading: Icon(Icons.help),
-                title: Text('FAQ'),
+                title: Text(AppLocalizations.of(context)!.faq),
                 onTap: () {
                   Navigator.pop(context);
                   // Navigate to FAQ
@@ -313,7 +324,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               ListTile(
                 leading: Icon(Icons.report),
-                title: Text('Report Issue'),
+                title: Text(AppLocalizations.of(context)!.reportIssue),
                 onTap: () {
                   Navigator.pop(context);
                   // Report issue functionality

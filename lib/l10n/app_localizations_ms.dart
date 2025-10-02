@@ -45,7 +45,7 @@ class AppLocalizationsMs extends AppLocalizations {
   String get languageChangedToEnglish => 'Bahasa telah ditukar kepada English';
 
   @override
-  String get languageChangedToMalay => 'Bahasa ditukar kepada Bahasa Melayu';
+  String get languageChangedToMalay => 'Language changed to Malay';
 
   @override
   String get preferences => 'Keutamaan';
@@ -58,10 +58,4 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String get somethingWentWrong => 'Sesuatu telah berlaku!';
-
-  @override
-  String get failedToSync => 'Gagal untuk segerak dengan pangkalan data. Sila cuba lagi.';
-
-  @override
-  String get retry => 'Cuba lagi';
 }

@@ -7,35 +7,33 @@ class AuthService {
   final SupabaseService _supabaseService = SupabaseService();
 
   Future<fb.User?> signInWithEmail(String email, String password) async {
-  try {
-    fb.UserCredential userCredential = await _firebaseAuth.signInWithEmailAndPassword(
-      email: email.trim(),
-      password: password,
-    );
+    try {
+      // 1. Sign in to Firebase first
+      final fb.UserCredential userCredential =
+          await _firebaseAuth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
 
-    // Sync user data to Supabase only if user successfully logs in
-    if (userCredential.user != null) {
-      try {
-        // Get the Firebase ID token
-        final firebaseToken = await userCredential.user?.getIdToken();
-        if (firebaseToken != null) {
-          // Sign in to Supabase with the Firebase token
-          await _supabaseService.signInWithFirebaseToken(firebaseToken);
-          // Now that Supabase is authenticated, sync the user data.
-          await _syncUserToSupabase(userCredential.user!);
-        }
-      } catch (e) {
-        print("Error during post-login sync: $e");
-        // Do not return null just because sync failed, user can still log in
+      // 2. If Firebase login is successful, also sign in to Supabase
+      if (userCredential.user != null) {
+        await _supabaseService.client.auth.signInWithPassword(
+          email: email.trim(),
+          password: password,
+        );
+        // Sync user data after both logins are successful
+        await _syncUserToSupabase(userCredential.user!);
       }
-    }
 
-    return userCredential.user;
-  } catch (e) {
-    print("Error signing in: $e");
-    return null;
+      return userCredential.user;
+    } on fb.FirebaseAuthException catch (e) {
+      print("Firebase sign-in error: ${e.message}");
+      return null;
+    } on AuthException catch (e) {
+      print("Supabase sign-in error: ${e.message}");
+      return null;
+    }
   }
-}
 
   Future<fb.User?> registerWithEmail(String email, String password) async {
     try {
@@ -52,6 +50,7 @@ class AuthService {
 
   Future<void> signOut() async {
     await _firebaseAuth.signOut();
+    await _supabaseService.client.auth.signOut();
   }
 
   Future<void> _syncUserToSupabase(fb.User firebaseUser) async {
