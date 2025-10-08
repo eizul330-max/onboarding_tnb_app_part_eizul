@@ -2,8 +2,10 @@ const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const jwt = require('jsonwebtoken');
 
-// Initialize Firebase Admin SDK
-admin.initializeApp();
+// Initialize Firebase Admin SDK without default service connections.
+// Passing an empty object prevents it from trying to connect to Firestore
+// or Realtime Database, which you are not using in this function.
+admin.initializeApp({});
 
 // --- Main Callable Function ---
 exports.mintSupabaseToken = functions.runWith({

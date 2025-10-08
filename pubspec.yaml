@@ -33,19 +33,18 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   
-  # Supabase & Related Packages (Verified)
+  # Supabase & Related Packages 
   supabase_flutter: ^2.10.1
   supabase: ^2.9.1
   postgrest: ^2.4.2
 
-  # Firebase & Related Packages (Verified)
+  # Firebase & Related Packages
   firebase_core: ^3.1.1
   firebase_auth: ^5.1.1
-  cloud_firestore: ^5.0.2
-  cloud_functions: ^5.0.2
-  firebase_storage: ^12.1.1
-  
-  # Other Dependencies (Verified)
+  cloud_firestore: ^5.6.12
+  firebase_storage: ^12.4.10
+
+  # Other Dependencies
   http: ^1.2.1
   dio: ^5.5.0
   open_filex: ^4.3.2
@@ -72,6 +71,8 @@ dependencies:
   qr_flutter: ^4.1.0
   mobile_scanner: ^5.0.0
   flutter_contacts: ^1.1.8
+  google_sign_in: any
+
 
 dev_dependencies:
   flutter_test:

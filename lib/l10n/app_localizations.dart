@@ -196,6 +196,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Something went wrong!'**
   String get somethingWentWrong;
+
+  /// No description provided for @online.
+  ///
+  /// In en, this message translates to:
+  /// **'Online'**
+  String get online;
+
+  /// No description provided for @offline.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline'**
+  String get offline;
+
+  /// No description provided for @typeAMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Type a message...'**
+  String get typeAMessage;
+
+  /// No description provided for @quickReplyTimeOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask about time off'**
+  String get quickReplyTimeOff;
+
+  /// No description provided for @quickReplyWifi.
+  ///
+  /// In en, this message translates to:
+  /// **'Wi-Fi password'**
+  String get quickReplyWifi;
+
+  /// No description provided for @quickReplyPortal.
+  ///
+  /// In en, this message translates to:
+  /// **'HR Portal link'**
+  String get quickReplyPortal;
+
+  /// No description provided for @quickReplyBenefits.
+  ///
+  /// In en, this message translates to:
+  /// **'View my benefits'**
+  String get quickReplyBenefits;
+
+  /// No description provided for @quickReplyEmergencyContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Emergency contact'**
+  String get quickReplyEmergencyContact;
+
+  /// No description provided for @chatWelcomeHR.
+  ///
+  /// In en, this message translates to:
+  /// **'Hello! I\'m {name}, your HR buddy. How can I assist you with policies, benefits, or anything else today?'**
+  String chatWelcomeHR(String name);
+
+  /// No description provided for @chatWelcomeTechnical.
+  ///
+  /// In en, this message translates to:
+  /// **'Hi there! I\'m {name} from the IT department. Are you facing any technical issues with software, hardware, or access?'**
+  String chatWelcomeTechnical(String name);
+
+  /// No description provided for @chatReplyWifi.
+  ///
+  /// In en, this message translates to:
+  /// **'The guest Wi-Fi password is \'TNBGuest2024\'. If you need access to the corporate network, please let me know your device details.'**
+  String get chatReplyWifi;
+
+  /// No description provided for @chatReplyTimeOff.
+  ///
+  /// In en, this message translates to:
+  /// **'You can apply for time off through the HR Portal. The policy allows for 20 days of annual leave. Would you like a link to the portal?'**
+  String get chatReplyTimeOff;
+
+  /// No description provided for @chatReplyBenefits.
+  ///
+  /// In en, this message translates to:
+  /// **'You can view a summary of your benefits, including medical and insurance, on the HR portal under the \'My Benefits\' section.'**
+  String get chatReplyBenefits;
+
+  /// No description provided for @chatReplyDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'I\'m not sure how to answer that, but I\'m learning! Could you rephrase, or would you like me to connect you to a human agent?'**
+  String get chatReplyDefault;
+
+  /// No description provided for @chatHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Chat History'**
+  String get chatHistory;
+
+  /// No description provided for @faq.
+  ///
+  /// In en, this message translates to:
+  /// **'FAQ'**
+  String get faq;
+
+  /// No description provided for @reportIssue.
+  ///
+  /// In en, this message translates to:
+  /// **'Report an Issue'**
+  String get reportIssue;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

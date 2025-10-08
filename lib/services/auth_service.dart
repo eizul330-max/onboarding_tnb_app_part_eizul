@@ -1,5 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart' as fb;
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'supabase_service.dart';
 
 class AuthService {
@@ -8,29 +8,17 @@ class AuthService {
 
   Future<fb.User?> signInWithEmail(String email, String password) async {
     try {
-      // 1. Sign in to Firebase first
-      final fb.UserCredential userCredential =
-          await _firebaseAuth.signInWithEmailAndPassword(
-        email: email.trim(),
+      fb.UserCredential userCredential = await _firebaseAuth.signInWithEmailAndPassword(
+        email: email,
         password: password,
       );
 
-      // 2. If Firebase login is successful, also sign in to Supabase
-      if (userCredential.user != null) {
-        await _supabaseService.client.auth.signInWithPassword(
-          email: email.trim(),
-          password: password,
-        );
-        // Sync user data after both logins are successful
-        await _syncUserToSupabase(userCredential.user!);
-      }
+      // Sync user data to Supabase
+      await _syncUserToSupabase(userCredential.user!);
 
       return userCredential.user;
-    } on fb.FirebaseAuthException catch (e) {
-      print("Firebase sign-in error: ${e.message}");
-      return null;
-    } on AuthException catch (e) {
-      print("Supabase sign-in error: ${e.message}");
+    } on fb.FirebaseAuthException catch (e, s) {
+      debugPrint("Error signing in: $e\n$s");
       return null;
     }
   }
@@ -42,22 +30,21 @@ class AuthService {
         password: password,
       );
       return userCredential.user;
-    } catch (e) {
-      print("Error registering: $e");
+    } on fb.FirebaseAuthException catch (e, s) {
+      debugPrint("Error registering: $e\n$s");
       return null;
     }
   }
 
   Future<void> signOut() async {
     await _firebaseAuth.signOut();
-    await _supabaseService.client.auth.signOut();
   }
 
   Future<void> _syncUserToSupabase(fb.User firebaseUser) async {
     final userData = {
       'uid': firebaseUser.uid,
       'email': firebaseUser.email,
-      'createdat': DateTime.now().toIso8601String(),
+      'created_at': DateTime.now().toIso8601String(),
     };
 
     await _supabaseService.client.from('users').upsert(userData);

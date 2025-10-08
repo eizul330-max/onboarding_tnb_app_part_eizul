@@ -1,19 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import '../../models/buddy_model.dart';
-import '../../data/buddies_data.dart';
 import '../../widgets/buddy_card.dart';
+import '../../models/buddy_model.dart'; // Import Buddy model
 import 'chat_screen.dart';
 import 'pre_chat_form_screen.dart';
+import '../../services/supabase_service.dart';
 
-class SupportHomeScreen extends StatelessWidget {
+class SupportHomeScreen extends StatefulWidget {
   const SupportHomeScreen({Key? key}) : super(key: key);
+
+  @override
+  State<SupportHomeScreen> createState() => _SupportHomeScreenState();
+}
+
+class _SupportHomeScreenState extends State<SupportHomeScreen> {
+  // final SupabaseService _supabaseService = SupabaseService(); // Not used directly here
+  late Future<List<dynamic>> _buddiesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _buddiesFuture = _fetchBuddies();
+  }
+
+  Future<List<dynamic>> _fetchBuddies() async {
+    return Future.value([
+      Buddy(id: '1', name: 'John Doe', role: 'HR Manager', department: 'HR', imageUrl: 'https://i.pravatar.cc/150?img=1', isOnline: true, specialties: ['Benefits', 'Policies'], email: 'john.doe@example.com', phone: '123-456-7890'),
+      Buddy(id: '2', name: 'Jane Smith', role: 'IT Support', department: 'IT', imageUrl: 'https://i.pravatar.cc/150?img=2', isOnline: false, specialties: ['Software', 'Hardware'], email: 'jane.smith@example.com', phone: '098-765-4321'),
+      Buddy(id: '3', name: 'Alice Brown', role: 'HR Assistant', department: 'HR', imageUrl: 'https://i.pravatar.cc/150?img=3', isOnline: true, specialties: ['Recruitment', 'Onboarding'], email: 'alice.brown@example.com', phone: '111-222-3333'),
+      Buddy(id: '4', name: 'Bob Johnson', role: 'Network Engineer', department: 'IT', imageUrl: 'https://i.pravatar.cc/150?img=4', isOnline: true, specialties: ['Networking', 'Security'], email: 'bob.j@example.com', phone: '444-555-6666'),
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Support System'),
+        title: const Text('Support & Help Center'),
         backgroundColor: Colors.blue[700],
         foregroundColor: Colors.white,
         elevation: 0,
@@ -81,12 +104,29 @@ class SupportHomeScreen extends StatelessWidget {
             const SizedBox(height: 16),
 
             Expanded(
-              child: ListView.builder(
-                itemCount: buddies.length,
-                itemBuilder: (context, index) {
-                  return BuddyCard(
-                    buddy: buddies[index],
-                    onTap: () => _navigateToChat(context, buddies[index]),
+              child: FutureBuilder<List<dynamic>>(
+                future: _buddiesFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) { // Changed from dynamic to Buddy
+                    return const Center(
+                        child: Text('No support buddies available.'));
+                  }
+
+                  final List<Buddy> buddies = snapshot.data!.cast<Buddy>(); // Cast to List<Buddy>
+                  return ListView.builder(
+                    itemCount: buddies.length,
+                    itemBuilder: (context, index) {
+                      return BuddyCard(
+                        buddy: buddies[index],
+                        onTap: () => _navigateToChat(context, buddies[index]),
+                      );
+                    },
                   );
                 },
               ),
@@ -165,7 +205,8 @@ class SupportHomeScreen extends StatelessWidget {
                     name: 'Technical Support Bot',
                     role: 'AI Assistant',
                     department: 'IT',
-                    imageUrl: 'assets/tech_bot.png',
+                    imageUrl:
+                        'https://i.pravatar.cc/150?u=techbot', // Placeholder
                     isOnline: true,
                     specialties: ['Software', 'Hardware', 'Access'],
                     email: 'tech@company.com',
@@ -181,26 +222,31 @@ class SupportHomeScreen extends StatelessWidget {
     );
   }
 
-  void _navigateToHRBuddy(BuildContext context) {
+  void _navigateToHRBuddy(BuildContext context) async {
+    final buddies = await _buddiesFuture;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => PreChatFormScreen(
           supportType: 'HR Support',
           onStartChat: (issue) {
-            // Handle starting chat with HR
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ChatScreen(
-                  buddy: buddies.firstWhere(
-                    (buddy) => buddy.department == 'HR',
-                    orElse: () => buddies[0],
-                  ),
-                  initialMessage: issue,
-                ),
-              ),
+            final hrBuddy = buddies.cast<Buddy>().firstWhere(
+              (buddy) => buddy.department == 'HR',
+              orElse: () => Buddy(
+                  id: 'hr_bot',
+                  name: 'HR Support Bot',
+                  role: 'AI Assistant',
+                  department: 'HR',
+                  imageUrl: 'https://i.pravatar.cc/150?u=hrbot',
+                  isOnline: true,
+                  specialties: ['Policies', 'Benefits'],
+                  email: 'hr@company.com',
+                  phone: ''),
             );
+
+            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) =>
+              ChatScreen(buddy: hrBuddy, initialMessage: issue),
+            ));
           },
         ),
       ),

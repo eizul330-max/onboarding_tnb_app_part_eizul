@@ -1,20 +1,27 @@
-import 'package:firebase_auth/firebase_auth.dart' as fb;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:onboarding_tnb_app_part_eizul/l10n/app_localizations.dart';
-import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:onboarding_tnb_app_part_eizul/services/theme_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:onboarding_tnb_app_part_eizul/firebase_options.dart';
+import 'package:provider/provider.dart';
 import 'package:onboarding_tnb_app_part_eizul/providers/local_auth_provider.dart';
 import 'package:onboarding_tnb_app_part_eizul/providers/locale_provider.dart'; // Add locale provider
 import 'package:onboarding_tnb_app_part_eizul/screens/auth/login_screen.dart';
 import 'package:onboarding_tnb_app_part_eizul/screens/home/home_screen.dart';
-import 'package:onboarding_tnb_app_part_eizul/services/theme_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Disable Firebase debug logging in release mode
+  if (kReleaseMode) {
+    // This is a general way to disable all debug prints in release mode.
+    debugPrint = (String? message, {int? wrapWidth}) {};
+  }
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -125,8 +132,8 @@ class AuthWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<fb.User?>(
-      stream: fb.FirebaseAuth.instance.authStateChanges(),
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.active) {
           if (snapshot.hasError) {
@@ -137,9 +144,14 @@ class AuthWrapper extends StatelessWidget {
             );
           }
 
-          fb.User? user = snapshot.data;
+          User? user = snapshot.data;
           if (user != null) {
-            return const HomeScreen();
+            if (user.emailVerified) {
+              return const HomeScreen();
+            } else {
+              // User is signed in but email is not verified
+              return const LoginScreen();
+            }
           }
           return const LoginScreen();
         }

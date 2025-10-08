@@ -2,8 +2,8 @@ import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:onboarding_tnb_app_part_eizul/screens/auth/login_screen.dart';
+import 'package:onboarding_tnb_app_part_eizul/services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:onboarding_tnb_app_part_eizul/screens/buddychat/help_center_screen.dart';
 import 'package:onboarding_tnb_app_part_eizul/screens/documentmanager/document_manager_screen.dart';
 import 'package:onboarding_tnb_app_part_eizul/screens/learninghub/learning_hub_screen.dart';
@@ -14,6 +14,8 @@ import 'package:onboarding_tnb_app_part_eizul/screens/qrcodescanner/qr_code_scan
 import 'package:onboarding_tnb_app_part_eizul/screens/setting/setting_screen.dart';
 import 'package:onboarding_tnb_app_part_eizul/screens/taskmanager/task_manager_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:onboarding_tnb_app_part_eizul/services/supabase_service.dart';
+import 'package:onboarding_tnb_app_part_eizul/screens/setting/manage_your_account_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,21 +29,33 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _userData;
   bool _isCheckingVerification = true;
 
+  // Supabase integration
+  final SupabaseService _supabaseService = SupabaseService();
+  final AuthService _authService = AuthService();
+  List<Map<String, dynamic>> _projects = [];
+
+  // List of screens for each tab
+  late final List<Widget> _screens;
+
   @override
   void initState() {
     super.initState();
-    _fetchUserData();
+    _screens = [
+      HomeContent(
+        userData: _userData,
+        onSignOut: _signOut,
+      ), // Home tab
+      const ScanQrScreen(), // QR Code Scanner tab
+      const SettingScreen(), // Settings tab
+    ];
+
+    _loadUserData();
+
     // Jangan tampilkan dialog verifikasi di sini karena akan mengganggu auto login
     // Pemeriksaan verifikasi sebaiknya dilakukan setelah UI ditampilkan
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkEmailVerification();
     });
-  }
-
-  @override
-  void dispose() {
-    // Jika nanti ada subscription / timer, batalkan di sini.
-    super.dispose();
   }
 
   void _onItemTapped(int index) {
@@ -51,25 +65,85 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _fetchUserData() async {
+  /// NOTE: Firebase used only for authentication. User profile is from Supabase.
+  Future<void> _loadUserData() async {
     try {
-      User? user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        DocumentSnapshot userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
 
-        if (!mounted)
-          return; // penting: jangan update state kalau sudah dispose
-        if (userDoc.exists) {
-          setState(() {
-            _userData = userDoc.data() as Map<String, dynamic>?;
-          });
+      // Get profile from Supabase (this includes profile_image and profile_image_url)
+      Map<String, dynamic>? supabaseData;
+      try {
+        supabaseData = await _supabaseService.getUserProfile(user.uid);
+      } catch (e) {
+        print('Supabase get user profile failed in HomeScreen: $e');
+      }
+
+      // Debug: log what we received
+      print('HomeScreen: supabaseData => $supabaseData');
+
+      if (!mounted) return;
+
+      final merged = <String, dynamic>{};
+
+      // Map supabase fields (snake_case) -> camelCase expected in UI
+      if (supabaseData != null) {
+        merged.addAll(supabaseData);
+
+        merged['fullName'] = supabaseData['full_name'] ??
+            merged['fullName'] ??
+            supabaseData['username'];
+        merged['email'] = supabaseData['email'] ?? merged['email'];
+        merged['phoneNumber'] =
+            supabaseData['phone_number'] ?? merged['phoneNumber'];
+        // Map work_type -> workType (important fix)
+        merged['workType'] = supabaseData['work_type'] ??
+            supabaseData['workType'] ??
+            merged['workType'];
+        merged['username'] = supabaseData['username'] ?? merged['username'];
+
+        // profile image url already added by getUserProfile as 'profile_image_url'
+        if (supabaseData['profile_image_url'] != null) {
+          merged['profileImageUrl'] = supabaseData['profile_image_url'];
+        } else if (supabaseData['profile_image'] != null) {
+          try {
+            merged['profileImageUrl'] = _supabaseService.getPublicUrl(
+                'profile-images', supabaseData['profile_image']);
+          } catch (e) {
+            print('Error building public URL in HomeScreen: $e');
+          }
         }
       }
+
+      // If user has a team_id, fetch team details to get work_team & work_place
+      try {
+        final teamId = supabaseData?['team_id'];
+        print('HomeScreen: teamId => $teamId');
+        if (teamId != null) {
+          final teamData =
+              await _supabaseService.getTeamByNoTeam(teamId.toString());
+          print('HomeScreen: teamData => $teamData');
+          if (teamData != null) {
+            merged['workTeam'] = teamData['work_team'] ?? merged['workTeam'];
+            merged['workPlace'] = teamData['work_place'] ?? merged['workPlace'];
+          }
+        }
+      } catch (e) {
+        print('Error loading team info in HomeScreen: $e');
+      }
+
+      setState(() {
+        _userData = merged;
+        // Update the HomeContent widget with the fetched user data
+        _screens[0] = HomeContent(
+          userData: _userData,
+          onSignOut: _signOut,
+        );
+      });
+
+      print('Loaded user data in HomeScreen: $_userData');
     } catch (e) {
-      print("Error fetching user data: $e");
+      print('Error loading user data in HomeScreen: $e');
     }
   }
 
@@ -154,7 +228,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _signOut() async {
     try {
-      await FirebaseAuth.instance.signOut();
+      await _authService.signOut();
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
@@ -189,14 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          HomeContent(userData: _userData), // Pass user data here
-          const ScanQrScreen(),
-          const SettingScreen(),
-        ],
-      ),
+      body: _screens[_selectedIndex],
       bottomNavigationBar: _buildBottomNavBar(primaryColor),
     );
   }
@@ -223,7 +290,8 @@ class _HomeScreenState extends State<HomeScreen> {
 // Home Content Widget (extracted from the original HomeScreen)
 class HomeContent extends StatefulWidget {
   final Map<String, dynamic>? userData;
-  const HomeContent({super.key, this.userData});
+  final Future<void> Function() onSignOut;
+  const HomeContent({super.key, this.userData, required this.onSignOut});
 
   @override
   State<HomeContent> createState() => _HomeContentState();
@@ -233,23 +301,12 @@ class _HomeContentState extends State<HomeContent> {
   bool _isHeaderExpanded = false;
   Color? primaryColor;
 
-  @override
-  void dispose() {
-    // Jika ada subscription atau timer, batalkan di sini.
-    super.dispose();
-  }
+  // Add SupabaseService
+  final SupabaseService _supabaseService = SupabaseService();
 
-  Future<void> _signOut() async {
-    try {
-      await FirebaseAuth.instance.signOut();
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-      );
-    } catch (e) {
-      print("Error signing out: $e");
-    }
+  @override
+  void initState() {
+    super.initState();
   }
 
   void _toggleHeaderExpansion() {
@@ -346,26 +403,52 @@ class _HomeContentState extends State<HomeContent> {
                   Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const CircleAvatar(
-                        radius: 40,
-                        backgroundColor: Colors.white,
-                        child: Icon(Icons.person, size: 40, color: Colors.grey),
+                      // CircleAvatar dengan profile image dari Supabase
+                      GestureDetector(
+                        onTap: () {
+                          // Open Manage Account screen to view/edit profile
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ManageAccountScreen(
+                                user: widget.userData ?? <String, dynamic>{},
+                              ),
+                            ),
+                          );
+                        },
+                        child: _buildProfileAvatar(radius: 40, iconSize: 40),
                       ),
                       const SizedBox(height: 20),
                       _buildDetailRow(
-                          Icons.person, widget.userData?['fullName'] ?? "Loading..."),
+                        Icons.person,
+                        widget.userData?['fullName'] ?? "Loading...",
+                        maxLines: 2, // boleh jadi 2 baris untuk nama panjang
+                      ),
                       const SizedBox(height: 12),
                       _buildDetailRow(
-                          Icons.email, widget.userData?['email'] ?? "Loading..."),
-                      const SizedBox(height: 12),
-                      _buildDetailRow(Icons.phone,
-                          widget.userData?['phoneNumber'] ?? "Loading..."),
-                      const SizedBox(height: 12),
-                      _buildDetailRow(Icons.business,
-                          "${widget.userData?['workUnit'] ?? "Loading"} | ${widget.userData?['workplace'] ?? "Loading"}"),
+                        Icons.email,
+                        widget.userData?['email'] ?? "Loading...",
+                        maxLines: 2,
+                      ),
                       const SizedBox(height: 12),
                       _buildDetailRow(
-                          Icons.work, widget.userData?['workType'] ?? "Loading..."),
+                        Icons.phone,
+                        widget.userData?['phoneNumber'] ?? "Loading...",
+                      ),
+                      const SizedBox(height: 12),
+                      // WorkTeam | WorkPlace: benarkan 2 baris dan gunakan center-left styling sedikit
+                      _buildDetailRow(
+                        Icons.business,
+                        "${widget.userData?['workTeam'] ?? "Loading"} | ${widget.userData?['workPlace'] ?? "Loading"}",
+                        maxLines: 2,
+                        align: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildDetailRow(
+                        Icons.work,
+                        widget.userData?['workType'] ?? "Loading...",
+                        maxLines: 2,
+                      ),
                       const SizedBox(height: 12),
                       const Icon(
                         Icons.keyboard_arrow_up,
@@ -378,7 +461,7 @@ class _HomeContentState extends State<HomeContent> {
                     top: 0,
                     right: 0,
                     child: IconButton(
-                      onPressed: _signOut,
+                      onPressed: widget.onSignOut,
                       icon: const Icon(Icons.logout,
                           color: Colors.white, size: 28),
                     ),
@@ -390,10 +473,20 @@ class _HomeContentState extends State<HomeContent> {
                 children: [
                   Row(
                     children: [
-                      const CircleAvatar(
-                        radius: 30,
-                        backgroundColor: Colors.white,
-                        child: Icon(Icons.person, size: 40, color: Colors.grey),
+                      // CircleAvatar dengan profile image dari Supabase (small version)
+                      GestureDetector(
+                        onTap: () {
+                          // Open Manage Account screen to view/edit profile
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ManageAccountScreen(
+                                user: widget.userData ?? <String, dynamic>{},
+                              ),
+                            ),
+                          );
+                        },
+                        child: _buildProfileAvatar(radius: 30, iconSize: 30),
                       ),
                       const SizedBox(width: 15),
                       Column(
@@ -404,7 +497,9 @@ class _HomeContentState extends State<HomeContent> {
                             style: TextStyle(fontSize: 18, color: Colors.white),
                           ),
                           Text(
-                            widget.userData?['username'] ?? "Loading...",
+                            widget.userData?['username'] ??
+                                widget.userData?['fullName'] ??
+                                "Loading...",
                             style: const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
@@ -415,7 +510,7 @@ class _HomeContentState extends State<HomeContent> {
                       ),
                       const Spacer(),
                       IconButton(
-                        onPressed: _signOut,
+                        onPressed: widget.onSignOut,
                         icon: const Icon(Icons.logout,
                             color: Colors.white, size: 28),
                       ),
@@ -432,23 +527,59 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
+  // Widget untuk CircleAvatar dengan profile image
+  Widget _buildProfileAvatar(
+      {required double radius, required double iconSize}) {
+    final String? profileImageUrl = widget.userData?['profileImageUrl'] as String?;
+
+    if (profileImageUrl != null && profileImageUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: Colors.white,
+        backgroundImage: NetworkImage(profileImageUrl),
+        onBackgroundImageError: (exception, stackTrace) {
+          // Fallback ke icon jika image gagal load
+          print('Error loading profile image: $exception');
+        },
+      );
+    } else {
+      // Jika tidak ada profile image, tampilkan icon default
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: Colors.white,
+        child: Icon(Icons.person, size: iconSize, color: Colors.grey),
+      );
+    }
+  }
+
   // Widget untuk baris detail (di expanded state)
-  Widget _buildDetailRow(IconData icon, String text) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, color: Colors.white, size: 20),
-        const SizedBox(width: 10),
-        Text(
-          text,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
+  // Updated: support multiline and alignment
+  Widget _buildDetailRow(IconData icon, String text,
+      {int maxLines = 1, TextAlign align = TextAlign.center}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          // Use Expanded so text takes remaining width and wraps nicely
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+              ),
+              textAlign: align,
+              maxLines: maxLines,
+              overflow: TextOverflow.ellipsis,
+              softWrap: true,
+            ),
           ),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -623,7 +754,7 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
-  // Compact center big circular "My Journey"
+  // Compact center big circular "My Journey" - FIXED VERSION
   Widget _buildCenterJourneyCompact(Color color) {
     final theme = Theme.of(context);
     final bool isDarkMode = theme.brightness == Brightness.dark;
@@ -689,10 +820,11 @@ class _HomeContentState extends State<HomeContent> {
                   "My\nJourney",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold),
-                )
+                    fontSize: 10,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           ),
@@ -756,10 +888,10 @@ class _HomeContentState extends State<HomeContent> {
                   margin: const EdgeInsets.only(right: 16),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(15),
-                    image: const DecorationImage(
-                      image: AssetImage('assets/images/background_news.jpeg'),
+                    image: DecorationImage(
+                      image: AssetImage(news['image']!),
                       fit: BoxFit.cover,
-                      colorFilter: ColorFilter.mode(
+                      colorFilter: const ColorFilter.mode(
                         Colors.black54,
                         BlendMode.darken,
                       ),

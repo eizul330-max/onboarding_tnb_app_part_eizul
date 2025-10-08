@@ -2,8 +2,8 @@
 
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 
 // Data models for Document and Folder
 class Document {
@@ -55,16 +55,26 @@ class Folder {
   }
 }
 
-
 class SupabaseService {
   static final SupabaseService _instance = SupabaseService._internal();
   factory SupabaseService() => _instance;
   SupabaseService._internal();
 
   final SupabaseClient client = Supabase.instance.client;
-  final String _documentBucketName = 'documents';
+  
+  // Storage bucket names
+  final String _documentBucketName = 'mydocument';
+  final String _profileBucketName = 'profile-images';
 
-  String? get _currentUserId => client.auth.currentUser?.id;
+  // List of supported image formats
+  static const List<String> supportedImageFormats = [
+    'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'heic', 'heif'
+  ];
+
+  // Maximum file size (10MB)
+  static const int maxFileSize = 10 * 1024 * 1024;
+
+  // ============ USER MANAGEMENT ============
 
   // Get user by uid (returns null if not found)
   Future<Map<String, dynamic>?> getUser(String uid) async {
@@ -73,11 +83,11 @@ class SupabaseService {
           .from('users')
           .select()
           .eq('uid', uid)
-          .maybeSingle(); // <-- returns null if 0 rows
+          .maybeSingle();
       if (response == null) return null;
       return Map<String, dynamic>.from(response as Map);
     } catch (e) {
-      print('Failed to get user: $e');
+      debugPrint('❌ Failed to get user: $e');
       throw Exception('Failed to get user: $e');
     }
   }
@@ -97,7 +107,7 @@ class SupabaseService {
           .from('users')
           .insert(userData)
           .select()
-          .maybeSingle(); // should return the inserted row
+          .maybeSingle();
 
       if (inserted == null) {
         throw Exception('Insert returned no row');
@@ -105,7 +115,7 @@ class SupabaseService {
 
       return Map<String, dynamic>.from(inserted as Map);
     } catch (e) {
-      print('Failed to create user: $e');
+      debugPrint('❌ Failed to create user: $e');
       throw Exception('Failed to create user: $e');
     }
   }
@@ -114,7 +124,7 @@ class SupabaseService {
     try {
       await client.from('users').update(updates).eq('uid', uid);
     } catch (e) {
-      print('Failed to update user: $e');
+      debugPrint('❌ Failed to update user: $e');
       throw Exception('Failed to update user: $e');
     }
   }
@@ -129,52 +139,162 @@ class SupabaseService {
           .maybeSingle();
       return response != null;
     } catch (e) {
-      print('Failed to check username: $e');
+      debugPrint('❌ Failed to check username: $e');
       throw Exception('Failed to check username: $e');
     }
   }
 
-  // File upload operations - UPDATED FOR profile-images BUCKET
-  Future<String> uploadFile(String bucket, String path, File file) async {
+  // ============ PROFILE MANAGEMENT ============
+
+  Future<Map<String, dynamic>?> getUserProfileForApp(String uid) async {
     try {
-      final response = await client.storage.from(bucket).upload(path, file);
-      return response;
+      final user = await getUser(uid);
+      if (user == null) return null;
+
+      // Build camelCase map
+      final Map<String, dynamic> out = {
+        'uid': user['uid'],
+        'fullName': user['full_name'] ?? '',
+        'username': user['username'] ?? '',
+        'email': user['email'] ?? '',
+        'phoneNumber': user['phone_number'] ?? '',
+        'workType': user['work_type'] ?? '',
+        'workplace': user['workplace'] ?? '',
+        'workUnit': user['work_unit'] ?? '',
+      };
+
+      // If user has team_id, fetch team by no_team
+      if (user['team_id'] != null) {
+        try {
+          final team = await getTeamByNoTeam(user['team_id'].toString());
+          if (team != null) {
+            out['workUnit'] = team['work_team'] ?? out['workUnit'] ?? '';
+            out['workTeam'] = team['work_team'] ?? '';
+            out['workPlace'] = team['work_place'] ?? '';
+            if ((out['workplace'] == null || out['workplace'].toString().isEmpty) &&
+                (team['work_place'] != null)) {
+              out['workplace'] = team['work_place'];
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠ Failed to fetch team info for user $uid: $e');
+        }
+      }
+
+      // profile image -> public url
+      if (user['profile_image'] != null && (user['profile_image'] as String).isNotEmpty) {
+        try {
+          out['profileImageUrl'] = getPublicUrl(_profileBucketName, user['profile_image']);
+        } catch (e) {
+          debugPrint('⚠ Failed to generate profile image URL: $e');
+        }
+      }
+
+      return out;
     } catch (e) {
-      print('Failed to upload file to bucket $bucket, path $path: $e');
-      throw Exception('Failed to upload file: $e');
+      debugPrint('❌ getUserProfileForApp failed: $e');
+      throw Exception('Failed to get user profile for app: $e');
     }
   }
 
-  // NEW: Upload file with overwrite option
+  Future<Map<String, dynamic>?> getTeamByNoTeam(String noTeam) async {
+    try {
+      final response = await client
+          .from('teams')
+          .select()
+          .eq('no_team', noTeam)
+          .maybeSingle();
+      return response;
+    } catch (e) {
+      debugPrint('❌ Failed to get team by no_team: $e');
+      throw Exception('Failed to get team by no_team: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getAllTeams() async {
+    try {
+      final response = await client.from('teams').select().order('no_team');
+      return response;
+    } catch (e) {
+      debugPrint('❌ Failed to get teams: $e');
+      throw Exception('Failed to get teams: $e');
+    }
+  }
+
+  // ============ FILE STORAGE OPERATIONS ============
+
+  // Generic file upload
+  Future<String> uploadFile(String bucket, String path, File file) async {
+    try {
+      debugPrint('📤 Uploading file to bucket: $bucket, path: $path');
+      final response = await client.storage.from(bucket).upload(path, file);
+      debugPrint('✅ File uploaded successfully: $response');
+      return response;
+    } catch (e) {
+      debugPrint('❌ Failed to upload file to bucket $bucket, path $path: $e');
+      throw Exception('Failed to upload file: ${e.toString()}');
+    }
+  }
+
+  // Upload file with overwrite option
   Future<String> uploadFileWithOverwrite(String bucket, String path, File file) async {
     try {
+      debugPrint('📤 Uploading file to bucket: $bucket, path: $path');
+
+      // Check file size before upload
+      final fileSize = await file.length();
+      if (fileSize > maxFileSize) {
+        throw Exception('File size too large. Maximum allowed: ${maxFileSize ~/ (1024 * 1024)}MB');
+      }
+
       final response = await client.storage.from(bucket).upload(
         path,
         file,
         fileOptions: const FileOptions(upsert: true),
       );
+
+      debugPrint('✅ File uploaded with overwrite successfully: $response');
       return response;
+    } on StorageException catch (e) {
+      debugPrint('❌ StorageException during upload: $e');
+      if (e.message.contains('File size limit exceeded')) {
+        throw Exception('File too large. Maximum size is ${maxFileSize ~/ (1024 * 1024)}MB.');
+      }
+      throw Exception('Failed to upload file: ${e.message}');
     } catch (e) {
-      print('Failed to upload file with overwrite to bucket $bucket, path $path: $e');
-      throw Exception('Failed to upload file: $e');
+      debugPrint('❌ Failed to upload file with overwrite to bucket $bucket, path $path: $e');
+      throw Exception('Failed to upload file: ${e.toString()}');
     }
   }
 
-  Future<String> getPublicUrl(String bucket, String path) async {
+  // Get public URL for file
+  String getPublicUrl(String bucket, String path) {
     try {
-      return client.storage.from(bucket).getPublicUrl(path);
+      // Clean path from bucket prefix if present
+      String cleanPath = path;
+      if (cleanPath.startsWith('$bucket/')) {
+        cleanPath = cleanPath.substring(bucket.length + 1);
+      }
+      if (cleanPath.startsWith('/')) {
+        cleanPath = cleanPath.substring(1);
+      }
+
+      final url = client.storage.from(bucket).getPublicUrl(cleanPath);
+      debugPrint('🔗 Generated public URL for $bucket: $url');
+      return url;
     } catch (e) {
-      print('Failed to get public URL for bucket $bucket, path $path: $e');
+      debugPrint('❌ Failed to get public URL for bucket $bucket, path $path: $e');
       throw Exception('Failed to get public URL: $e');
     }
   }
 
-  // NEW: Check if file exists in storage
+  // Check if file exists in storage
   Future<bool> fileExists(String bucket, String path) async {
     try {
-      final response = await client.storage.from(bucket).list(path: path);
-      return response.isNotEmpty;
+      await client.storage.from(bucket).download(path);
+      return true;
     } catch (e) {
+      debugPrint('File does not exist: $path, error: $e');
       return false;
     }
   }
@@ -183,13 +303,15 @@ class SupabaseService {
   Future<void> deleteFile(String bucket, String path) async {
     try {
       await client.storage.from(bucket).remove([path]);
+      debugPrint('🗑 File deleted: $path from bucket: $bucket');
     } catch (e) {
-      print('Failed to delete file from bucket $bucket, path $path: $e');
+      debugPrint('❌ Failed to delete file from bucket $bucket, path $path: $e');
       throw Exception('Failed to delete file: $e');
     }
   }
 
-  // NEW: Update user profile with image
+  // ============ PROFILE IMAGE MANAGEMENT ============
+
   Future<void> updateUserProfile({
     required String uid,
     required String fullName,
@@ -198,6 +320,8 @@ class SupabaseService {
     String? profileImagePath,
   }) async {
     try {
+      debugPrint('👤 Updating user profile for: $uid');
+
       final updateData = {
         'full_name': fullName,
         'username': username,
@@ -207,141 +331,218 @@ class SupabaseService {
       };
 
       await updateUser(uid, updateData);
+      debugPrint('✅ User profile updated successfully');
     } catch (e) {
-      print('Failed to update user profile: $e');
+      debugPrint('❌ Failed to update user profile: $e');
       throw Exception('Failed to update user profile: $e');
     }
   }
 
-  // NEW: Upload profile image and return the path
-  Future<String> uploadProfileImage(String uid, File imageFile) async {
-    try {
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileName = '${uid}_$timestamp.jpg';
-      final path = 'profiles/$fileName';
+  // Validate image file
+  Future<void> _validateImageFile(File imageFile) async {
+    if (!await imageFile.exists()) {
+      throw Exception('Image file does not exist');
+    }
 
-      await uploadFileWithOverwrite('profile-images', path, imageFile);
+    final fileSize = await imageFile.length();
+    if (fileSize > maxFileSize) {
+      throw Exception('Image file too large. Maximum size is ${maxFileSize ~/ (1024 * 1024)}MB.');
+    }
+
+    final fileExtension = imageFile.path.split('.').last.toLowerCase();
+    if (!supportedImageFormats.contains(fileExtension)) {
+      throw Exception('Unsupported image format. Supported formats: ${supportedImageFormats.join(', ')}');
+    }
+  }
+
+  String _getFileExtension(String path) {
+    try {
+      final extension = path.split('.').last.toLowerCase();
+      return supportedImageFormats.contains(extension) ? extension : 'jpg';
+    } catch (e) {
+      return 'jpg';
+    }
+  }
+
+  String _getFileExtensionFromFile(File file) {
+    return _getFileExtension(file.path);
+  }
+
+  Future<String?> getCurrentProfileImagePath(String uid) async {
+    try {
+      final user = await getUser(uid);
+      return user?['profile_image'] as String?;
+    } catch (e) {
+      debugPrint('❌ Failed to get current profile image path: $e');
+      return null;
+    }
+  }
+
+  Future<String> uploadProfileImage(String uid, File imageFile) async {
+    String? oldImagePath;
+
+    try {
+      debugPrint('🖼 Starting profile image upload for user: $uid');
+      await _validateImageFile(imageFile);
+
+      oldImagePath = await getCurrentProfileImagePath(uid);
+      if (oldImagePath != null && oldImagePath.isNotEmpty) {
+        debugPrint('📁 Current profile image path: $oldImagePath');
+      }
+
+      final fileExtension = _getFileExtensionFromFile(imageFile);
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'profile_$timestamp.$fileExtension';
+      final path = 'profiles/$uid/$fileName';
+
+      debugPrint('📁 Uploading to new path: $path (format: $fileExtension)');
+      final result = await uploadFileWithOverwrite(_profileBucketName, path, imageFile);
+      debugPrint('✅ Profile image uploaded successfully: $result');
+
+      if (oldImagePath != null && oldImagePath.isNotEmpty && oldImagePath != path) {
+        await _deleteOldProfileImage(oldImagePath);
+      }
+
       return path;
     } catch (e) {
-      print('Failed to upload profile image: $e');
-      throw Exception('Failed to upload profile image: $e');
+      debugPrint('❌ Failed to upload profile image: $e');
+      throw Exception('Failed to upload profile image: ${e.toString()}');
     }
   }
 
-  // NEW: Get user profile with image URL
-  Future<Map<String, dynamic>?> getUserProfile(String uid) async {
-  try {
-    final userData = await getUser(uid);
-    if (userData == null) return null;
+  Future<void> _deleteOldProfileImage(String oldImagePath) async {
+    try {
+      debugPrint('🗑 Attempting to delete old profile image: $oldImagePath');
 
-    // Add profile image URL if exists
-    if (userData['profile_image'] != null && (userData['profile_image'] as String).isNotEmpty) {
-      try {
-        // getPublicUrl is asynchronous and must be awaited.
-        userData['profile_image_url'] = await getPublicUrl('profile-images', userData['profile_image'] as String);
-        print('🖼 Profile image URL: ${userData['profile_image_url']}');
-      } catch (e) {
-        print('❌ Error generating profile image URL: $e');
-        userData['profile_image_url'] = null;
+      String cleanPath = oldImagePath;
+      if (cleanPath.startsWith('$_profileBucketName/')) {
+        cleanPath = cleanPath.replaceFirst('$_profileBucketName/', '');
       }
-    } else {
-      print('ℹ No profile image found for user');
-      userData['profile_image_url'] = null;
-    }
 
-    return userData;
-  } catch (e) {
-    print('❌ Failed to get user profile: $e');
-    throw Exception('Failed to get user profile: $e');
-  }
-}
-
-  // Projects operations
-  Future<List<Map<String, dynamic>>> getProjects() async {
-    try {
-      final response = await client.from('projects').select();
-      return response;
+      final exists = await fileExists(_profileBucketName, cleanPath);
+      if (exists) {
+        await deleteFile(_profileBucketName, cleanPath);
+        debugPrint('✅ Old profile image deleted successfully: $cleanPath');
+      } else {
+        debugPrint('ℹ Old profile image not found, skipping deletion: $cleanPath');
+      }
     } catch (e) {
-      print('Failed to get projects: $e');
-      throw Exception('Failed to get projects: $e');
+      debugPrint('⚠ Failed to delete old profile image (non-critical): $e');
     }
   }
 
-  // Tasks operations
-  Future<List<Map<String, dynamic>>> getTasks() async {
+  Future<void> updateUserProfileWithImage({
+    required String uid,
+    required String fullName,
+    required String username,
+    required String phoneNumber,
+    File? newProfileImage,
+  }) async {
+    String? newProfileImagePath;
+    String? oldProfileImagePath;
+
     try {
-      final response = await client.from('tasks').select('''
-        *,
-        projects (*)
-      ''');
-      return response;
+      debugPrint('👤 Updating user profile for: $uid');
+      oldProfileImagePath = await getCurrentProfileImagePath(uid);
+
+      if (newProfileImage != null) {
+        newProfileImagePath = await uploadProfileImage(uid, newProfileImage);
+      }
+
+      final updateData = {
+        'full_name': fullName,
+        'username': username,
+        'phone_number': phoneNumber,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+        if (newProfileImagePath != null) 'profile_image': newProfileImagePath,
+      };
+
+      await updateUser(uid, updateData);
+      debugPrint('✅ User profile updated successfully');
+
+      if (newProfileImage != null &&
+          oldProfileImagePath != null &&
+          oldProfileImagePath.isNotEmpty &&
+          newProfileImagePath != oldProfileImagePath) {
+        await _deleteOldProfileImage(oldProfileImagePath);
+      }
     } catch (e) {
-      print('Failed to get tasks: $e');
-      throw Exception('Failed to get tasks: $e');
+      debugPrint('❌ Failed to update user profile: $e');
+
+      if (newProfileImagePath != null) {
+        debugPrint('🔄 Cleaning up newly uploaded image due to failure: $newProfileImagePath');
+        try {
+          await deleteFile(_profileBucketName, newProfileImagePath);
+        } catch (cleanupError) {
+          debugPrint('⚠ Failed to cleanup new image: $cleanupError');
+        }
+      }
+      throw Exception('Failed to update user profile: $e');
     }
   }
 
-  // Learning operations
-  Future<List<Map<String, dynamic>>> getLearnings() async {
+  Future<Map<String, dynamic>?> getUserProfile(String uid) async {
     try {
-      final response = await client.from('learns').select('''
-        *,
-        lessons (*)
-      ''');
-      return response;
+      final userData = await getUser(uid);
+      if (userData == null) return null;
+
+      if (userData['profile_image'] != null && userData['profile_image'].isNotEmpty) {
+        userData['profile_image_url'] = getPublicUrl(_profileBucketName, userData['profile_image']);
+        debugPrint('🖼 Profile image URL: ${userData['profile_image_url']}');
+      } else {
+        debugPrint('ℹ No profile image found for user');
+      }
+
+      return userData;
     } catch (e) {
-      print('Failed to get learnings: $e');
-      throw Exception('Failed to get learnings: $e');
+      debugPrint('❌ Failed to get user profile: $e');
+      throw Exception('Failed to get user profile: $e');
     }
   }
 
-  // Progress tracking
-  Future<void> updateProgress(Map<String, dynamic> progressData) async {
+  Future<void> cleanupOrphanedProfileImages() async {
     try {
-      await client.from('progress').upsert(progressData);
+      final allImages = await client.storage.from(_profileBucketName).list();
+      final users = await client.from('users').select('profile_image');
+
+      final usedImagePaths = users
+          .where((user) => user['profile_image'] != null)
+          .map((user) => user['profile_image'] as String)
+          .toSet();
+
+      final orphanedImages = allImages
+          .where((image) => !usedImagePaths.contains(image.name))
+          .toList();
+
+      for (final image in orphanedImages) {
+        debugPrint('🗑 Deleting orphaned image: ${image.name}');
+        await deleteFile(_profileBucketName, image.name);
+      }
+
+      debugPrint('✅ Cleanup completed. Deleted ${orphanedImages.length} orphaned images');
     } catch (e) {
-      print('Failed to update progress: $e');
-      throw Exception('Failed to update progress: $e');
+      debugPrint('❌ Failed to cleanup orphaned images: $e');
     }
   }
 
-  // Get user progress
-  Future<List<Map<String, dynamic>>> getUserProgress(String userId) async {
-    try {
-      final response = await client
-          .from('progress')
-          .select('''
-            *,
-            lessons (*),
-            learns (*)
-          ''')
-          .eq('userId', userId);
-      return response;
-    } catch (e) {
-      print('Failed to get user progress: $e');
-      throw Exception('Failed to get user progress: $e');
-    }
-  }
+  // ============ DOCUMENT & FOLDER MANAGEMENT ============
 
-  // GET: Fetch files and folders for the current Supabase user
-  Future<List<dynamic>> getFoldersAndFiles({String? folderId}) async {
-    final userId = _currentUserId;
+  Future<List<dynamic>> getFoldersAndFiles(
+      {String? folderId}) async {
+    final userId = client.auth.currentUser?.id; // Use Supabase user ID for consistency
     if (userId == null) {
       throw Exception('User is not authenticated.');
     }
 
     try {
-      // Call the database function to get both folders and documents in one go.
       final response = await client.rpc(
-        'get_folder_contents',
+        'get_folder_contents', // This RPC fetches items for the specified user and folder
         params: {
-          'p_user_id': userId, // Pass the user's ID
-          'p_folder_id': folderId
+          'p_user_id': userId,
+          'p_folder_id': folderId,
         },
       );
 
-      // The RPC returns a single list of mixed-type objects.
-      // We parse them based on the 'type' field we added in the SQL function.
       final items = (response as List).map((item) {
         final json = item as Map<String, dynamic>;
         if (json['type'] == 'folder') {
@@ -352,16 +553,15 @@ class SupabaseService {
         return null;
       }).where((item) => item != null).toList();
 
-      // The SQL function already sorts by name, so we can just return the list.
       return items;
     } catch (e) {
+      debugPrint('❌ Failed to load items from Supabase: $e');
       throw Exception('Failed to load items from Supabase: $e');
     }
   }
 
-  // POST: Create a new folder
   Future<void> createFolder(String name, {String? parentId}) async {
-    final userId = _currentUserId;
+    final userId = client.auth.currentUser?.id;
     if (userId == null) {
       throw Exception('User is not authenticated.');
     }
@@ -371,6 +571,7 @@ class SupabaseService {
         'name': name,
         'parent_folder_id': parentId,
         'user_id': userId,
+        'created_by': userId,
       };
 
       await client.from('folders').insert(newFolder);
@@ -379,39 +580,32 @@ class SupabaseService {
     }
   }
 
-  // DELETE: Delete a folder (recursively deletes subfolders and files)
   Future<void> deleteFolder(String folderId) async {
-    final userId = _currentUserId;
+    final userId = client.auth.currentUser?.id; // Use Supabase user ID for consistency
     if (userId == null) {
       throw Exception('User is not authenticated.');
     }
 
     try {
-      // Call the RPC function to delete the folder and its contents recursively.
-      // This is much more efficient than doing it on the client side.
-      // Note: This assumes you have a function named `delete_folder` in your Supabase project.
+      debugPrint('🗑️ Deleting folder: $folderId for user: $userId');
+      // The RPC function `delete_folder` should use `auth.uid()` internally for security.
       await client.rpc('delete_folder', params: {'p_folder_id': folderId});
+      debugPrint('✅ Folder deleted successfully: $folderId');
     } catch (e) {
-      // Re-throw so the UI can present an error
+      debugPrint('❌ Failed to delete folder: $e');
       throw Exception('Failed to delete folder: $e');
     }
   }
 
-  // POST: Add a new file to a folder
   Future<void> addFileToFolder(String folderId, PlatformFile file) async {
-    final userId = _currentUserId;
+    final userId = client.auth.currentUser?.id;
     if (userId == null) {
       throw Exception('User is not authenticated.');
     }
 
     try {
-      // 1. Sanitize the file name to remove illegal characters for URLs.
       final sanitizedFileName = file.name.replaceAll(RegExp(r'[#?]'), '_');
-
-      // 2. Construct a user-scoped file path. This is crucial for RLS policies
-      // on Supabase Storage, ensuring users can only access their own 'folder'.
       final filePath = '$userId/$folderId/$sanitizedFileName';
-
       final fileBytes = file.bytes;
 
       if (fileBytes == null) {
@@ -429,18 +623,18 @@ class SupabaseService {
 
       await client.from('documents').insert({
         'name': file.name,
-        'path': filePath, // Use the new, correct filePath
+        'path': filePath,
         'folder_id': folderId,
         'user_id': userId,
+        'created_by': userId,
       });
     } catch (e) {
       throw Exception('Failed to add file to folder: $e');
     }
   }
 
-  // PUT: Edit/replace an existing file
   Future<void> editFile(Document doc, PlatformFile newFile) async {
-    final userId = _currentUserId;
+    final userId = client.auth.currentUser?.id;
     if (userId == null) {
       throw Exception('User is not authenticated.');
     }
@@ -449,20 +643,16 @@ class SupabaseService {
       final fileBytes = newFile.bytes;
       if (fileBytes == null) throw Exception('New file bytes are null.');
 
-      // 1. Update/Replace the file in Storage using the existing path (doc.path)
-      // The 'upsert: true' option handles the overwrite. This is cleaner than remove/upload.
       await client.storage.from(_documentBucketName).updateBinary(
-            doc.path,
-            fileBytes,
-            fileOptions: const FileOptions(upsert: true),
-          );
+        doc.path,
+        fileBytes,
+        fileOptions: const FileOptions(upsert: true),
+      );
 
-      // 2. Optional: Update the document name/updated_at fields in Postgres
       if (doc.name != newFile.name) {
-        // If the file name changed, update the metadata record
         await client.from('documents').update({
           'name': newFile.name,
-          'updated_at': DateTime.now().toUtc().toIso8601String(), // Good practice
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
         }).eq('id', doc.id);
       }
     } catch (e) {
@@ -470,34 +660,28 @@ class SupabaseService {
     } 
   }
 
-  // DELETE: Remove a file
   Future<void> removeFile(Document doc) async {
-    final userId = _currentUserId;
+    final userId = client.auth.currentUser?.id;
     if (userId == null) {
       throw Exception('User is not authenticated.');
     }
 
     try {
-      // 1. Remove file from Supabase Storage
       await client.storage.from(_documentBucketName).remove([doc.path]);
-
-      // 2. Remove file record from database
       await client.from('documents').delete().eq('id', doc.id);
     } catch (e) {
       throw Exception('Failed to remove file from Supabase: $e');
     }
   }
 
-  // Get a temporary signed URL for secure download
   Future<String> getDownloadUrl(Document doc) async {
-    final userId = _currentUserId;
+    final userId = client.auth.currentUser?.id;
     if (userId == null) {
       throw Exception('User is not authenticated.');
     }
 
     try {
-      final signedUrl =
-          await client.storage.from(_documentBucketName).createSignedUrl(doc.path, 60); // URL is valid for 60 seconds
+      final signedUrl = await client.storage.from(_documentBucketName).createSignedUrl(doc.path, 60);
       return signedUrl;
     } catch (e) {
       throw Exception('Failed to get download URL: $e');

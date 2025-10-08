@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../models/buddy_model.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import '../../models/buddy_model.dart'; 
 import '../../models/message_model.dart';
 import '../../widgets/message_bubble.dart';
 import '../../widgets/quick_reply_button.dart';

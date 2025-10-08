@@ -1,10 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:intl/intl.dart';
+import 'package:onboarding_tnb_app_part_eizul/services/supabase_service.dart';
 
 class ManageAccountScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -25,7 +23,7 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
   bool _editing = false;
   bool _loading = true;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseService _supabaseService = SupabaseService();
   Map<String, dynamic> _userData = {};
 
   Color? get appBarIconColor => Theme.of(context).iconTheme.color;
@@ -36,43 +34,50 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
     _fetchUserData();
   }
 
+  void _initializeUserData() {
+    setState(() {
+      _userData = widget.user;
+      nameCtrl = TextEditingController(
+          text: _userData['full_name'] ?? _userData['fullName'] ?? '');
+      phoneCtrl = TextEditingController(
+          text: _userData['phone_number'] ?? _userData['phoneNumber'] ?? '');
+      usernameCtrl = TextEditingController(text: _userData['username'] ?? '');
+    });
+  }
+
   Future<void> _fetchUserData() async {
     try {
-      User? user = _auth.currentUser;
-      if (user != null) {
-        DocumentSnapshot userDoc = await _firestore
-            .collection('users')
-            .doc(user.uid)
-            .get();
-
-        if (userDoc.exists) {
-          setState(() {
-            _userData = userDoc.data() as Map<String, dynamic>;
-            nameCtrl = TextEditingController(text: _userData['fullName'] ?? '');
-            phoneCtrl = TextEditingController(text: _userData['phoneNumber'] ?? '');
-            usernameCtrl = TextEditingController(text: _userData['username'] ?? '');
-            _loading = false;
-          });
-        } else {
-          // If no data in Firestore, use data from widget.user
-          setState(() {
-            _userData = widget.user;
-            nameCtrl = TextEditingController(text: _userData['fullName'] ?? '');
-            phoneCtrl = TextEditingController(text: _userData['phoneNumber'] ?? '');
-            usernameCtrl = TextEditingController(text: _userData['username'] ?? '');
-            _loading = false;
-          });
-        }
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) {
+        // If no user, use initial data from widget and stop loading
+        _initializeUserData();
+        return;
       }
+      // Fetch fresh data from Supabase
+      final supabaseData = await _supabaseService.getUserProfile(uid);
+      _userData = supabaseData ?? widget.user; // Fallback to widget data
+      _initializeUserData(); // Initialize controllers with the most recent data
     } catch (e) {
       print("Error fetching user data: $e");
-      // Fallback to widget.user data if error occurs
+      _userData = widget.user; // On error, use widget data
+      _initializeUserData();
+    } finally {
       setState(() {
-        _userData = widget.user;
-        nameCtrl = TextEditingController(text: _userData['fullName'] ?? '');
-        phoneCtrl = TextEditingController(text: _userData['phoneNumber'] ?? '');
-        usernameCtrl = TextEditingController(text: _userData['username'] ?? '');
         _loading = false;
+      });
+    }
+  }
+
+  Future<void> _refreshUserData() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final refreshedData = await _supabaseService.getUserProfile(uid);
+    if (refreshedData != null) {
+      setState(() {
+        _userData = refreshedData;
+        nameCtrl.text = _userData['full_name'] ?? _userData['fullName'] ?? '';
+        phoneCtrl.text = _userData['phone_number'] ?? _userData['phoneNumber'] ?? '';
+        usernameCtrl.text = _userData['username'] ?? '';
       });
     }
   }
@@ -95,43 +100,33 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
     }
   }
 
-  String _formatTimestamp(Timestamp timestamp) {
-    final date = timestamp.toDate();
-    final format = DateFormat('dd MMMM yyyy \'at\' HH:mm:ss');
-    return format.format(date);
-  }
-
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
 
-    try {
-      String? imageUrl;
-      
-      // Upload image if selected
-      if (_pickedImage != null) {
-        final storageRef = FirebaseStorage.instance
-            .ref()
-            .child('profile_images')
-            .child('${_auth.currentUser!.uid}.jpg');
-        
-        await storageRef.putFile(_pickedImage!);
-        imageUrl = await storageRef.getDownloadURL();
-      }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('User not authenticated.'), 
+          backgroundColor: Colors.red
+        ),
+      );
+      setState(() => _saving = false);
+      return;
+    }
 
-      // Update user data in Firestore
-      await _firestore
-          .collection('users')
-          .doc(_auth.currentUser!.uid)
-          .update({
-            'fullName': nameCtrl.text.trim(),
-            'phoneNumber': phoneCtrl.text.trim(),
-            'username': usernameCtrl.text.trim(),
-            if (imageUrl != null) 'profileImageUrl': imageUrl,
-          });
+    try {
+      await _supabaseService.updateUserProfileWithImage(
+        uid: uid,
+        fullName: nameCtrl.text.trim(),
+        username: usernameCtrl.text.trim(),
+        phoneNumber: phoneCtrl.text.trim(),
+        newProfileImage: _pickedImage,
+      );
 
       // Refresh user data after update
-      await _fetchUserData();
+      await _refreshUserData();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -140,7 +135,10 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        setState(() => _editing = false);
+        setState(() {
+          _editing = false;
+          _pickedImage = null;
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -226,7 +224,8 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
         : const Color.fromRGBO(224, 124, 124, 1);
     final cardColor = theme.cardColor;
 
-    final Timestamp? createdAt = _userData['createdAt'];
+    // Fixed: Removed duplicate createdAt declaration
+    final String createdAt = _userData['created_at'] ?? '';
 
     if (_loading) {
       return Scaffold(
@@ -283,8 +282,8 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
                 setState(() {
                   _editing = false;
                   // Reset changes
-                  nameCtrl.text = _userData['fullName'] ?? '';
-                  phoneCtrl.text = _userData['phoneNumber'] ?? '';
+                  nameCtrl.text = _userData['full_name'] ?? _userData['fullName'] ?? '';
+                  phoneCtrl.text = _userData['phone_number'] ?? _userData['phoneNumber'] ?? '';
                   usernameCtrl.text = _userData['username'] ?? '';
                   _pickedImage = null;
                 });
@@ -301,16 +300,16 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
               onTap: _pickImage,
               child: Stack(
                 children: [
-                  // Use your preferred default avatar
                   if (_pickedImage != null)
                     CircleAvatar(
                       radius: 48,
                       backgroundImage: FileImage(_pickedImage!),
                     )
-                  else if (_userData['profileImageUrl'] != null && _userData['profileImageUrl'].isNotEmpty)
+                  else if (_userData['profile_image_url'] != null && 
+                           _userData['profile_image_url'].isNotEmpty)
                     CircleAvatar(
                       radius: 48,
-                      backgroundImage: NetworkImage(_userData['profileImageUrl']),
+                      backgroundImage: NetworkImage(_userData['profile_image_url']),
                     )
                   else
                     const CircleAvatar(
@@ -359,7 +358,7 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
                             controller: usernameCtrl,
                             decoration: InputDecoration(
                               labelText: 'Username',
-                              border: OutlineInputBorder(),
+                              border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: cardColor,
                               prefixIcon: Icon(Icons.person, color: primaryColor),
@@ -367,7 +366,7 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
                             validator: (v) =>
                                 (v ?? '').trim().isEmpty ? 'Username required' : null,
                           )
-                        : _buildReadOnlyField('Username', _userData['username'] ?? ''),
+                        : _buildReadOnlyField('Username', usernameCtrl.text),
                   ),
                   const SizedBox(height: 16),
                   
@@ -379,7 +378,7 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
                             controller: nameCtrl,
                             decoration: InputDecoration(
                               labelText: 'Full Name',
-                              border: OutlineInputBorder(),
+                              border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: cardColor,
                               prefixIcon: Icon(Icons.badge, color: primaryColor),
@@ -387,12 +386,12 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
                             validator: (v) =>
                                 (v ?? '').trim().isEmpty ? 'Name required' : null,
                           )
-                        : _buildReadOnlyField('Full Name', _userData['fullName'] ?? ''),
+                        : _buildReadOnlyField('Full Name', nameCtrl.text),
                   ),
                   const SizedBox(height: 16),
                   
                   // Email Field (always read-only)
-                  _buildReadOnlyField('Email', _userData['email'] ?? ''),
+                  _buildReadOnlyField('Email', _userData['email'] ?? 'Not set'),
                   const SizedBox(height: 16),
                   
                   // Phone Number Field
@@ -403,7 +402,7 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
                             controller: phoneCtrl,
                             decoration: InputDecoration(
                               labelText: 'Phone Number',
-                              border: OutlineInputBorder(),
+                              border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: cardColor,
                               prefixIcon: Icon(Icons.phone, color: primaryColor),
@@ -413,13 +412,13 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
                                 ? null
                                 : 'Enter valid phone number',
                           )
-                        : _buildReadOnlyField('Phone Number', _userData['phoneNumber'] ?? ''),
+                        : _buildReadOnlyField('Phone Number', phoneCtrl.text),
                   ),
                   const SizedBox(height: 24),
 
                   _buildSectionHeader('Work Information'),
-                  _buildReadOnlyField('Work Type', _userData['workType'] ?? ''),
-                  _buildReadOnlyField('Work Unit', _userData['workUnit'] ?? ''),
+                  _buildReadOnlyField('Work Type', _userData['work_type'] ?? ''),
+                  _buildReadOnlyField('Work Unit', _userData['work_team'] ?? ''),
                   _buildReadOnlyField('Workplace', _userData['workplace'] ?? ''),
                   const SizedBox(height: 24),
 
@@ -445,8 +444,8 @@ class _ManageAccountScreenState extends State<ManageAccountScreen> {
                         const Text('Created at'),
                         const Spacer(),
                         Text(
-                          createdAt != null 
-                            ? _formatTimestamp(createdAt)
+                          createdAt.isNotEmpty
+                            ? createdAt.substring(0, 10) // Just show date
                             : 'Unknown',
                           style: TextStyle(
                             color: Theme.of(context).textTheme.bodySmall?.color,

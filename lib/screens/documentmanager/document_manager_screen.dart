@@ -1,9 +1,11 @@
 // document_manager_screen.dart
 
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:onboarding_tnb_app_part_eizul/services/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DocumentManagerScreen extends StatefulWidget {
   const DocumentManagerScreen({super.key});
@@ -14,9 +16,9 @@ class DocumentManagerScreen extends StatefulWidget {
 
 class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
   // Change the service to SupabaseFileService
-  late final SupabaseService _fileManagerService;
-  late Future<List<dynamic>> _filesFuture;
-
+  final SupabaseService _fileManagerService = SupabaseService();
+  Future<List<dynamic>>? _filesFuture; // Keep for FutureBuilder
+  
   // --- NAVIGATION IMPROVEMENT ---
   // Use a list to track the navigation path (breadcrumb)
   final List<_PathSegment> _pathHistory = [];
@@ -25,10 +27,8 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
   @override
   void initState() {
     super.initState();
-    // Start at the root
     _pathHistory.add(_PathSegment(id: null, name: 'Home'));
-    _fileManagerService = SupabaseService();
-    _loadFiles();
+    _loadFiles(); // Initial load for the root folder.
   }
 
   void _loadFiles() {
@@ -252,46 +252,51 @@ class _DocumentManagerScreenState extends State<DocumentManagerScreen> {
                 onPressed: _goBack,
               ),
       ),
-      body: FutureBuilder<List<dynamic>>(
-        future: _filesFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+      body: StreamBuilder<AuthState>(
+        stream: _fileManagerService.client.auth.onAuthStateChange,
+        builder: (context, authSnapshot) {
+          if (authSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return Center(
-              child: Text(
-                isRoot ? 'No folders yet.' : 'This folder is empty.',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              ),
-            );
-          } else {
-            final currentDirectory = snapshot.data!;
-            return ListView.builder(
-              padding: const EdgeInsets.all(16.0),
-              itemCount: currentDirectory.length,
-              itemBuilder: (context, index) {
-                final item = currentDirectory[index];
-                if (item is Folder) {
-                  return FolderCard(
-                    folder: item,
-                    onTap: () => _navigateToFolder(item),
-                    onMenuTap: () => _showFolderContextMenu(item),
-                  );
-                } else if (item is Document) {
-                  return DocumentCard(
-                    document: item,
-                    onTap: () {
-                      _openFile(item);
-                    },
-                    onMenuTap: () => _showFileContextMenu(item),
-                  );
-                }
-                return Container();
-              },
-            );
           }
+
+          final session = authSnapshot.data?.session;
+          if (session == null) {
+            // Not authenticated, you could show a login prompt or a message
+            return const Center(child: Text('Please log in to view documents.'));
+          }
+
+          return FutureBuilder<List<dynamic>>(
+            future: _filesFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              } else if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return Center(
+                  child: Text(
+                    isRoot ? 'No folders yet.' : 'This folder is empty.',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                  ),
+                );
+              } else {
+                final currentDirectory = snapshot.data!;
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16.0),
+                  itemCount: currentDirectory.length,
+                  itemBuilder: (context, index) {
+                    final item = currentDirectory[index];
+                    if (item is Folder) {
+                      return FolderCard(folder: item, onTap: () => _navigateToFolder(item), onMenuTap: () => _showFolderContextMenu(item));
+                    } else if (item is Document) {
+                      return DocumentCard(document: item, onTap: () => _openFile(item), onMenuTap: () => _showFileContextMenu(item));
+                    }
+                    return Container();
+                  },
+                );
+              }
+            },
+          );
         },
       ),
       floatingActionButton: FloatingActionButton(
