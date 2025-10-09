@@ -1,3 +1,5 @@
+// auth_service.dart
+
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/foundation.dart';
 import 'supabase_service.dart';
